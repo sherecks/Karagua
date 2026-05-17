@@ -9,13 +9,17 @@ import { motion } from "motion/react";
 export function Hero() {
   return (
     <section id="topo" className="relative mx-auto max-w-6xl px-6 pt-24 pb-28 md:pt-32 md:pb-36">
-      <motion.div variants={stagger} initial="hidden" animate="visible" className="max-w-4xl">
-        <motion.p
-          variants={fadeUp}
-          className="text-label font-semibold tracking-[0.12em] text-k-ink-soft uppercase"
-        >
-          Balneário Barra do Sul, Santa Catarina
-        </motion.p>
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        animate="visible"
+        className="max-w-4xl relative"
+      >
+        <img
+          src="/mangue.png"
+          alt="Mangue"
+          className="w-auto h-124 object-cover rounded-lg absolute top-0 left-0 z-10"
+        />
 
         <h1 className="mt-6 overflow-hidden text-display font-thin text-k-ink">
           <motion.span variants={maskRise} className="block">
