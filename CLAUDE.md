@@ -24,7 +24,7 @@ src/
   main.tsx                # React root
   style.css               # tokens do DS (fonte da verdade visual)
   lib/utils.ts            # cn()
-  lib/motion.ts           # fadeUp / fadeIn / stagger / reveal
+  lib/motion.ts           # fadeUp / fadeIn / stagger / reveal / maskRise
   components/ui/          # shadcn (gerado — não estilizar por fora sem motivo)
   components/lp/          # seções da landing
 public/fonts/             # Aileron .woff2 (ver README lá)
@@ -99,12 +99,33 @@ Corpo longo: aplicar `.measure` (max 70ch).
 
 ## 4. Movimento
 
-- Helpers em `@/lib/motion`: `fadeUp`, `fadeIn`, `stagger`, `reveal`.
+- Helpers em `@/lib/motion`: `fadeUp`, `fadeIn`, `stagger`, `reveal`,
+  `maskRise`, `EASE_OUT_QUART`.
 - Easing: **ease-out-quart** padrão (`cubic-bezier(0.25,1,0.5,1)`). Vars CSS:
   `--ease-out-quart`, `--ease-out-expo`, `--ease-out-quint`.
 - Duração 150–300ms. Anima **só** `transform` e `opacity`.
 - `<MotionConfig reducedMotion="user">` envolve o app; CSS também zera animações
   sob `prefers-reduced-motion`. Não burlar.
+
+### Scroll-linked (cinematográfico contido)
+
+- Permitido: `useScroll` + `useTransform` com mapeamento **linear**
+  (interpolação posição→valor).
+- **Proibido `useSpring`** em qualquer binding de scroll — física de mola
+  viola o DS (sem bounce/spring/elastic), mesmo em scroll.
+- Padrões prontos:
+  - Mask reveal de headline — clip `overflow-hidden` no próprio `h1`/`h2`
+    com `motion.span variants={maskRise}` conduzido pelo **stagger da seção**.
+    Não usar `whileInView` próprio: aninhado sob o `stagger`/`reveal` do pai
+    ele entra em conflito de orquestração e o título trava em `hidden`. Ver
+    `hero.tsx` e `SectionHeader` em `section.tsx`.
+  - Sticky-scrub — seção alta + filho `sticky`; conteúdo monta conforme
+    `scrollYProgress` (ver `methodology-block.tsx`).
+  - Parallax — deslocamento `y` de poucos px por `useTransform` linear,
+    amplitude contida (ver `carbono-azul.tsx`).
+- Reduced motion: **JS também** decide (`useReducedMotion`), não só o CSS.
+  Toda seção scroll-linked renderiza o **estado final estático** sob
+  `prefers-reduced-motion`. Sem estado intermediário preso ao scroll.
 
 ## 5. Componente assinatura — Methodology Block
 

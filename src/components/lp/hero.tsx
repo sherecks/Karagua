@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
-import { fadeUp, stagger } from "@/lib/motion";
+import { fadeUp, maskRise, stagger } from "@/lib/motion";
 
 /**
  * Hero — Display type (Aileron Thin), shell surface. Brand color stays
@@ -17,9 +17,11 @@ export function Hero() {
           Balneário Barra do Sul, Santa Catarina
         </motion.p>
 
-        <motion.h1 variants={fadeUp} className="mt-6 text-display font-thin text-k-ink">
-          Preservando os <span className="font-bold text-k-deep">manguezais</span>.
-        </motion.h1>
+        <h1 className="mt-6 overflow-hidden text-display font-thin text-k-ink">
+          <motion.span variants={maskRise} className="block">
+            Preservando os <span className="font-bold text-k-deep">manguezais</span>.
+          </motion.span>
+        </h1>
 
         <motion.p variants={fadeUp} className="measure mt-8 text-body text-k-ink-soft">
           Economia circular e protagonismo comunitário para proteger, monitorar e restaurar o

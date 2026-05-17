@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { fadeUp, reveal, stagger } from "@/lib/motion";
+import { fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
 
 type Surface = "shell" | "fog" | "elevated" | "carbon";
 
@@ -56,9 +56,11 @@ export function SectionHeader({
       >
         {eyebrow}
       </motion.p>
-      <motion.h2 variants={fadeUp} className="mt-4 text-headline font-bold text-foreground">
-        {title}
-      </motion.h2>
+      <h2 className="mt-4 overflow-hidden text-headline font-bold text-foreground">
+        <motion.span variants={maskRise} className="block">
+          {title}
+        </motion.span>
+      </h2>
       {children ? (
         <motion.div
           variants={fadeUp}

@@ -5,7 +5,7 @@ import type { Variants } from "motion/react";
  * ease-out-quart, 150–300ms, transform/opacity only. No bounce/spring.
  * Reduced motion is honored globally via <MotionConfig reducedMotion="user">.
  */
-const EASE_OUT_QUART = [0.25, 1, 0.5, 1] as const;
+export const EASE_OUT_QUART = [0.25, 1, 0.5, 1] as const;
 
 export const fadeUp: Variants = {
   hidden: { opacity: 0, y: 16 },
@@ -27,6 +27,15 @@ export const fadeIn: Variants = {
 export const stagger: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.08 } },
+};
+
+/** Inner element of a MaskReveal: rises from behind an overflow-hidden clip. */
+export const maskRise: Variants = {
+  hidden: { y: "110%" },
+  visible: {
+    y: "0%",
+    transition: { duration: 0.3, ease: EASE_OUT_QUART },
+  },
 };
 
 /** Reveal-on-scroll defaults, applied once when 30% in view. */
