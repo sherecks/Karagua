@@ -1,4 +1,4 @@
-import { MotionConfig } from "motion/react";
+import { Footer } from "@/components/footer";
 import { CarbonoAzul } from "@/components/lp/carbono-azul";
 import { CtaFinal } from "@/components/lp/cta-final";
 import { Eventos } from "@/components/lp/eventos";
@@ -10,15 +10,70 @@ import { MethodologyBlock } from "@/components/lp/methodology-block";
 import { Pillars } from "@/components/lp/pillars";
 import { Problema } from "@/components/lp/problema";
 import { Roadmap } from "@/components/lp/roadmap";
-import { SiteFooter } from "@/components/lp/site-footer";
-import { SiteNav } from "@/components/lp/site-nav";
+import { EASE_OUT_QUART } from "@/lib/motion";
+import { MotionConfig } from "motion/react";
+
+import { Cursor } from "@/components/cursor";
+import { Sidebar } from "@/components/sidebar";
+import { Equal, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useState } from "react";
+import { Loader, LOADER_SESSION_TOTAL_MS } from "./components/loader";
+
+const iconTransition = { duration: 0.25, ease: EASE_OUT_QUART } as const;
 
 export function App() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setLoading(false), LOADER_SESSION_TOTAL_MS);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-background">
-        <SiteNav />
+      <AnimatePresence>{loading && <Loader />}</AnimatePresence>
+      <div className="min-h-screen bg-muted">
+        <AnimatePresence>{isOpen && <Sidebar />}</AnimatePresence>
+        <div className="flex mx-auto max-w-6xl flex-row items-center  px-6 justify-between sticky top-4 w-full z-100">
+          <a href="#topo" className="mix-blend-difference">
+            <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12" />
+          </a>
+          <motion.button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className="relative bg-background cursor-pointer inline-flex  size-10 rounded-full items-center justify-center"
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              {isOpen ? (
+                <motion.span
+                  key="close"
+                  initial={{ opacity: 0, rotate: -90, scale: 0.85 }}
+                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                  exit={{ opacity: 0, rotate: 90, scale: 0.85 }}
+                  transition={iconTransition}
+                  className="absolute inset-0 inline-flex items-center justify-center"
+                >
+                  <X aria-hidden className="size-5" />
+                </motion.span>
+              ) : (
+                <motion.span
+                  key="menu"
+                  initial={{ opacity: 0, rotate: 90, scale: 0.85 }}
+                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                  exit={{ opacity: 0, rotate: -90, scale: 0.85 }}
+                  transition={iconTransition}
+                  className="absolute inset-0 inline-flex items-center justify-center"
+                >
+                  <Equal aria-hidden className="size-5" />
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </motion.button>
+        </div>
         <main>
+          <Cursor />
           <Hero />
           <Problema />
           <KaraguaVivo />
@@ -31,7 +86,7 @@ export function App() {
           <Mapa />
           <CtaFinal />
         </main>
-        <SiteFooter />
+        <Footer />
       </div>
     </MotionConfig>
   );

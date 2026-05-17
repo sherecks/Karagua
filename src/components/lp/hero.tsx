@@ -1,6 +1,6 @@
-import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { fadeUp, maskRise, stagger } from "@/lib/motion";
+import { motion } from "motion/react";
 
 /**
  * Hero — Display type (Aileron Thin), shell surface. Brand color stays

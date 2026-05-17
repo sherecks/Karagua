@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { Section } from "@/components/lp/section";
 import { Button } from "@/components/ui/button";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
+import { SITE_EMAIL } from "@/lib/site";
 
 export function CtaFinal() {
   return (
@@ -17,14 +18,12 @@ export function CtaFinal() {
         </motion.p>
         <motion.div variants={fadeUp} className="mt-10 flex flex-wrap justify-center gap-4">
           <Button asChild size="lg">
-            <a href="mailto:contato@karagua.com.br?subject=Investir%20na%20Karagu%C3%A1">
+            <a href={`mailto:${SITE_EMAIL}?subject=Investir%20na%20Karagu%C3%A1`}>
               Investir na Karaguá
             </a>
           </Button>
           <Button asChild size="lg" variant="outline">
-            <a href="mailto:contato@karagua.com.br?subject=Parceria%20Karagu%C3%A1%20Vivo">
-              Ser parceiro
-            </a>
+            <a href={`mailto:${SITE_EMAIL}?subject=Parceria%20Karagu%C3%A1%20Vivo`}>Ser parceiro</a>
           </Button>
         </motion.div>
       </motion.div>

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://karagua.com.br/sitemap.xml
