@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 // Cursor único, branco + mix-blend-difference (efeito negativo real: escuro
 // sobre superfície clara, claro sobre carbon). Sobre elemento clicável ele
-// encolhe e ganha blur interno. Sem onda/rastro.
+// encolhe. Sem onda/rastro.
 //
 // O negativo só funciona fora de um stacking context isolado: por isso o
 // nó é `position: fixed` direto sob um <div> simples (sem position/z-index/
@@ -13,7 +13,6 @@ const INTERACTIVE =
 
 const SIZE = 64;
 const HOVER_SCALE = 0.7; // encolhe sobre clicável
-const HOVER_BLUR = 4; // blur interno sobre clicável (px)
 const FOLLOW = 0.22; // suavização linear de posição (sem mola)
 const SCALE_FOLLOW = 0.2; // suavização linear da escala
 
@@ -59,12 +58,7 @@ export function Cursor() {
         pos.y = mouse.y;
       }
       const hit = document.elementFromPoint(e.clientX, e.clientY);
-      const next = !!(hit instanceof Element && hit.closest(INTERACTIVE));
-      if (next !== hovering) {
-        hovering = next;
-        const el = dotRef.current;
-        if (el) el.style.filter = hovering ? `blur(${HOVER_BLUR}px)` : "blur(0px)";
-      }
+      hovering = !!(hit instanceof Element && hit.closest(INTERACTIVE));
     };
 
     const tick = () => {
@@ -106,8 +100,6 @@ export function Cursor() {
           mixBlendMode: "difference",
           transform: "translate3d(-9999px, -9999px, 0)",
           transformOrigin: "center",
-          filter: "blur(0px)",
-          transition: "filter 0.18s cubic-bezier(0.25, 1, 0.5, 1)",
           zIndex: 9998,
           pointerEvents: "none",
           willChange: "transform",

@@ -5,12 +5,12 @@ import { Eventos } from "@/components/lp/eventos";
 import { Guardioes } from "@/components/lp/guardioes";
 import { Hero } from "@/components/lp/hero";
 import { KaraguaVivo } from "@/components/lp/karagua-vivo";
-import { Mapa } from "@/components/lp/mapa";
 import { MethodologyBlock } from "@/components/lp/methodology-block";
 import { Pillars } from "@/components/lp/pillars";
 import { Problema } from "@/components/lp/problema";
-import { Roadmap } from "@/components/lp/roadmap";
+import { ScrollRail } from "@/components/scroll-rail";
 import { EASE_OUT_QUART } from "@/lib/motion";
+import { startViewTransition } from "@/lib/view-transition";
 import { MotionConfig } from "motion/react";
 
 import { Cursor } from "@/components/cursor";
@@ -35,15 +35,21 @@ export function App() {
     <MotionConfig reducedMotion="user">
       <AnimatePresence>{loading && <Loader />}</AnimatePresence>
       <div className="min-h-screen bg-muted">
-        <AnimatePresence>{isOpen && <Sidebar />}</AnimatePresence>
+        <AnimatePresence>{isOpen && <Sidebar onClose={() => setIsOpen(false)} />}</AnimatePresence>
+        {!loading && <ScrollRail />}
         <div className="flex mx-auto max-w-6xl flex-row items-center  px-6 justify-between sticky top-4 w-full z-100">
-          <a href="#topo" className="mix-blend-difference">
+          <a
+            href="#topo"
+            className="mix-blend-difference"
+            style={{ viewTransitionName: "brand-mark" }}
+          >
             <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12" />
           </a>
           <motion.button
             type="button"
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={() => startViewTransition(() => setIsOpen((v) => !v))}
             className="relative bg-background cursor-pointer inline-flex  size-10 rounded-full items-center justify-center"
+            style={{ viewTransitionName: "menu-toggle" }}
           >
             <AnimatePresence mode="wait" initial={false}>
               {isOpen ? (
@@ -82,8 +88,6 @@ export function App() {
           <CarbonoAzul />
           <Guardioes />
           <Eventos />
-          <Roadmap />
-          <Mapa />
           <CtaFinal />
         </main>
         <Footer />

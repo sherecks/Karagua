@@ -8,7 +8,7 @@ const AboutLinks = [
   { href: "#karagua-vivo", label: "Sobre" },
   { href: "#pilares", label: "Tecnologia" },
   { href: "#carbono-azul", label: "Carbono azul" },
-  { href: "#mapa", label: "Mapa" },
+  { href: "#metodologia", label: "Metodologia" },
 ];
 
 const LegalLinks = [

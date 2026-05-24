@@ -31,9 +31,9 @@ export function KaraguaVivo() {
           </>
         }
       >
-        Um programa de Pagamento por Serviços Ambientais focado na proteção, no monitoramento e na
-        restauração dos manguezais. No centro dele está a ecobarreira: o resíduo que ameaça o mangue
-        vira a infraestrutura que o protege.
+        Programa de Pagamento por Serviços Ambientais focado em proteção, monitoramento e
+        restauração de manguezais. No centro está a ecobarreira: o resíduo que ameaça o mangue vira
+        a infraestrutura que o protege e o ativo que se compra.
       </SectionHeader>
 
       <motion.ol {...reveal} variants={stagger} className="mt-14 grid gap-6 md:grid-cols-3">

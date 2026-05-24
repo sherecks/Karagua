@@ -290,4 +290,18 @@
       scroll-behavior: auto !important;
     }
   }
+
+  /* View Transitions — duração/easing alinhados ao DS (ease-out-quart, 280ms). */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.28s;
+    animation-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  ::view-transition-old(brand-mark),
+  ::view-transition-new(brand-mark),
+  ::view-transition-old(menu-toggle),
+  ::view-transition-new(menu-toggle) {
+    animation-duration: 0.32s;
+    animation-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+  }
 }

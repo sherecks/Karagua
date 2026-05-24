@@ -1,5 +1,5 @@
-import { motion } from "motion/react";
-import type { ReactNode } from "react";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
 
@@ -14,20 +14,51 @@ const surfaceClass: Record<Surface, string> = {
   carbon: "dark bg-background text-foreground border-y border-border",
 };
 
+/**
+ * Section primitive. Default `fullHeight` makes each section take the full
+ * viewport and applies a scroll-linked fade/translate so adjacent sections
+ * crossfade cinematographically. Sections that own their own scroll region
+ * (sticky-scrub, multi-screen pinning) opt out with `fullHeight={false}`.
+ */
 export function Section({
   id,
   surface = "shell",
   className,
+  fullHeight = true,
   children,
 }: {
   id?: string;
   surface?: Surface;
   className?: string;
+  fullHeight?: boolean;
   children: ReactNode;
 }) {
+  const ref = useRef<HTMLElement>(null);
+  const reduceMotion = useReducedMotion();
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"],
+  });
+
+  // Linear interpolation only — no spring. Subtle: opacity 0.35→1→1→0.4, y 32→0→0→-16.
+  const opacity = useTransform(scrollYProgress, [0, 0.32, 0.68, 1], [0.35, 1, 1, 0.4]);
+  const y = useTransform(scrollYProgress, [0, 0.32, 0.68, 1], [32, 0, 0, -16]);
+
+  const innerStyle = reduceMotion ? undefined : { opacity, y };
+
   return (
-    <section id={id} className={cn(surfaceClass[surface], "py-24 md:py-28", className)}>
-      <div className="mx-auto max-w-6xl px-6">{children}</div>
+    <section
+      ref={ref}
+      id={id}
+      className={cn(
+        surfaceClass[surface],
+        fullHeight ? "flex min-h-screen flex-col justify-center py-24 md:py-28" : "py-24 md:py-28",
+        className,
+      )}
+    >
+      <motion.div style={innerStyle} className="mx-auto w-full max-w-6xl px-6">
+        {children}
+      </motion.div>
     </section>
   );
 }

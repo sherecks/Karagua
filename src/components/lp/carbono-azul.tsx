@@ -15,7 +15,7 @@ const traits = [
   },
   {
     t: "Registro independente",
-    d: "Contabilidade de carbono azul pelo RCGI-USP Carbon Registry.",
+    d: "Contabilidade de carbono azul pelo RCGI-USP Carbon Registry (Research Centre for Greenhouse Gas Innovation, Universidade de São Paulo).",
   },
 ];
 
@@ -55,11 +55,11 @@ export function CarbonoAzul() {
   });
 
   return (
-    <Section id="carbono-azul" surface="shell">
+    <Section id="carbono-azul" surface="shell" fullHeight={false}>
       <SectionHeader eyebrow="Carbono azul" title="Um ativo ambiental de alta integridade.">
-        O manguezal é um dos sumidouros de carbono mais densos do planeta. Karaguá transforma essa
-        captura em um ativo verificável, com lastro que o investidor pode conferir, não apenas
-        confiar.
+        O manguezal é um dos sumidouros de carbono mais densos do planeta. Karaguá converte essa
+        captura em ativo verificável, com lastro que o comprador audita ponto a ponto. Confiança
+        deixa de ser premissa, vira evidência.
       </SectionHeader>
 
       {reduce ? (

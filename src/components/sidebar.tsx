@@ -1,29 +1,25 @@
 import { EASE_OUT_QUART } from "@/lib/motion";
+import { NAV_SECTIONS } from "@/lib/sections";
+import { startViewTransition } from "@/lib/view-transition";
 import { motion } from "motion/react";
 
-export function Sidebar() {
-  const itens = [
-    {
-      id: "hero",
-      label: "Sobre",
-    },
-    {
-      id: "karagua-vivo",
-      label: "Karaguá Vivo",
-    },
-    {
-      id: "pilares",
-      label: "Tecnologia",
-    },
-    {
-      id: "roadmap",
-      label: "Roadmap",
-    },
-    {
-      id: "eventos",
-      label: "Eventos",
-    },
-  ];
+type SidebarProps = {
+  onClose: () => void;
+};
+
+export function Sidebar({ onClose }: SidebarProps) {
+  const itens = NAV_SECTIONS;
+
+  function handleNavigate(e: React.MouseEvent<HTMLAnchorElement>, id: string) {
+    e.preventDefault();
+    const el = document.getElementById(id);
+    if (el) {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }
+    startViewTransition(onClose);
+  }
+
   return (
     <motion.div
       initial={{ x: "100%" }}
@@ -53,6 +49,7 @@ export function Sidebar() {
           <li key={item.id}>
             <motion.a
               href={`#${item.id}`}
+              onClick={(e) => handleNavigate(e, item.id)}
               className="text-6xl font-semibold text-white transition-colors hover:text-k-bright"
               initial={{ opacity: 0, x: "100%" }}
               animate={{ opacity: 1, x: 0 }}

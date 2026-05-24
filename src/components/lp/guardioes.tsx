@@ -4,9 +4,9 @@ export function Guardioes() {
   return (
     <Section id="guardioes" surface="fog">
       <SectionHeader eyebrow="Protagonismo comunitário" title="Guardiões do Mangue.">
-        Membros da comunidade são treinados para monitorar o manguezal e recebem por isso, via
-        Pagamento por Serviços Ambientais. A proteção acontece com quem vive no território,
-        transformando cuidado ambiental em renda justa.
+        Moradores treinados monitoram o manguezal em campo e são remunerados via Pagamento por
+        Serviços Ambientais. Quem vive no território opera o MRV: cadeia de custódia curta, baixo
+        risco de reversão e impacto social mensurável que compõe a integridade do crédito.
       </SectionHeader>
     </Section>
   );

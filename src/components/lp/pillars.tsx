@@ -6,22 +6,22 @@ import { fadeUp, reveal, stagger } from "@/lib/motion";
 const pillars = [
   {
     title: "Economia Circular",
-    body: "Coletamos o PET descartado nos próprios manguezais e o transformamos em filamento para impressão 3D das ecobarreiras.",
+    body: "PET descartado dentro do mangue vira filamento de impressão 3D para as ecobarreiras. Insumo coletado no próprio território, com custo até 66% menor que a alternativa convencional.",
     tag: "Redução de custo 50–66%",
   },
   {
-    title: "Monitoramento",
-    body: "Guardiões do Mangue, membros da comunidade treinados, realizam observações quinzenais em campo.",
+    title: "Monitoramento (MRV)",
+    body: "Monitoramento, Relato e Verificação. Guardiões do Mangue, treinados na comunidade, fazem observações quinzenais em campo seguindo a Resolução CONAMA 357/2005. Dado de origem, com cadeia de custódia.",
     tag: "CONAMA 357/2005",
   },
   {
     title: "Georreferenciamento",
-    body: "GPS e aplicativos registram cada ecobarreira. Todo dado coletado é público e acessível.",
+    body: "GPS e aplicativos registram cada ecobarreira instalada. O dataset completo é aberto: qualquer comprador pode reauditar do ponto.",
     tag: "Dados públicos",
   },
   {
-    title: "Impacto Social",
-    body: "Pagamento por Serviços Ambientais transforma cuidado ambiental em oportunidade econômica justa.",
+    title: "Pagamento por Serviços Ambientais",
+    body: "PSA paga quem vive no território para proteger e monitorar. Impacto social mensurável que compõe a integridade do crédito.",
     tag: "PSA",
   },
 ];
@@ -29,7 +29,7 @@ const pillars = [
 export function Pillars() {
   return (
     <Section id="pilares" surface="shell">
-      <SectionHeader eyebrow="A tecnologia" title="Quatro frentes, um manguezal protegido." />
+      <SectionHeader eyebrow="A tecnologia" title="Quatro frentes, um ativo de alta integridade." />
 
       <motion.div
         {...reveal}
