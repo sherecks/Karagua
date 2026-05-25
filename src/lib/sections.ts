@@ -6,12 +6,11 @@ export type NavSection = {
 /** Single source of truth for in-page navigation (ScrollRail + Sidebar). */
 export const NAV_SECTIONS: NavSection[] = [
   { id: "topo", label: "Início" },
-  { id: "problema", label: "Desafio" },
-  { id: "karagua-vivo", label: "Karaguá Vivo" },
-  { id: "pilares", label: "Tecnologia" },
-  { id: "metodologia", label: "Metodologia" },
-  { id: "carbono-azul", label: "Carbono azul" },
-  { id: "guardioes", label: "Guardiões" },
-  { id: "eventos", label: "Eventos" },
-  { id: "investir", label: "Investir" },
+  { id: "problema", label: "Problema" },
+  { id: "solucao", label: "Solução" },
+  { id: "impacto", label: "Impacto" },
+  { id: "como-funciona", label: "Como funciona" },
+  { id: "empresas", label: "Para empresas" },
+  { id: "legal", label: "Base legal" },
+  { id: "contato", label: "Contato" },
 ];

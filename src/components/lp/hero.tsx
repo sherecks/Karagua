@@ -4,11 +4,13 @@ import { motion } from "motion/react";
 
 const TOPO_SRC = `${import.meta.env.BASE_URL}topo.svg`.replace(/\/+/g, "/");
 
-/**
- * Hero — Display type (Aileron Thin), shell surface. Brand color stays
- * under 3%: a single accented word, nothing flooded. A faint topo layer
- * persists from the loader as a visual continuity cue.
- */
+const stats = [
+  { value: "380 ha", label: "no projeto piloto em Balneário Barra do Sul" },
+  { value: "R$1.2M", label: " por ano é a estimativa de receita em créditos de carbono" },
+  { value: "8.000 ha", label: "de potencial na Baía da Babitonga" },
+  { value: "400+", label: "famílias impactadas até 2035" },
+];
+
 export function Hero() {
   return (
     <section
@@ -34,29 +36,51 @@ export function Hero() {
         variants={stagger}
         initial="hidden"
         animate="visible"
-        className="relative mx-auto flex max-w-4xl flex-col items-center text-center"
+        className="relative flex flex-col"
       >
-        <h1 className="text-display font-thin">
-          Carbono azul de manguezal, com lastro{" "}
-          <span className="font-bold text-k-deep">auditável</span>.
-        </h1>
+        {/* Texto — limitado a max-w-2xl, alinhado à esquerda */}
+        <div className="flex max-w-2xl flex-col items-start text-left">
+          <motion.p
+            variants={fadeUp}
+            className="text-label font-semibold tracking-[0.12em] uppercase text-k-ink-soft mb-8"
+          >
+            Carbono Azul · Santa Catarina · Brasil
+          </motion.p>
 
-        <p className="measure mt-8 text-body text-k-ink-soft">
-          Restauramos manguezais em Balneário Barra do Sul (SC) e transformamos a captura em ativo
-          verificável. Cada ecobarreira tem coordenada, data e responsável; cada número tem fonte
-          pública. Para compradores que precisam confiar e auditar.
-        </p>
+          <h1 className="text-display font-thin">
+            O manguezal é um ativo climático.{" "}
+            <span className="font-bold text-k-deep">Tratamos ele como tal.</span>
+          </h1>
 
+          <p className="measure mt-8 text-body text-k-ink-soft">
+            A Karaguá Ecotech estrutura projetos de certificação de créditos de carbono azul em
+            manguezais, integrando ciência aplicada, tecnologia de monitoramento e participação
+            comunitária remunerada.
+          </p>
+
+          <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center gap-4">
+            <Button asChild size="lg">
+              <a href="#empresas">Adquirir créditos de carbono</a>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <a href="#como-funciona">Como funciona</a>
+            </Button>
+          </motion.div>
+        </div>
+
+        {/* Stats — largura total da section */}
         <motion.div
           variants={fadeUp}
-          className="mt-10 flex flex-wrap items-center justify-center gap-4"
+          className="mt-16 grid w-full grid-cols-2 gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-4"
         >
-          <Button asChild size="lg">
-            <a href="#investir">Comprar carbono azul</a>
-          </Button>
-          <Button asChild size="lg" variant="outline">
-            <a href="#metodologia">Ver a metodologia</a>
-          </Button>
+          {stats.map((s) => (
+            <div key={s.label} className="bg-k-elevated px-6 py-7 text-left">
+              <p className="font-mono text-headline font-semibold text-k-deep leading-none">
+                {s.value}
+              </p>
+              <p className="mt-3 text-sm leading-snug text-k-ink-soft">{s.label}</p>
+            </div>
+          ))}
         </motion.div>
       </motion.div>
     </section>

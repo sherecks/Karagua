@@ -1,104 +1,64 @@
-import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
-import type { MotionValue } from "motion/react";
-import { useRef } from "react";
+import { motion } from "motion/react";
 import { Section, SectionHeader } from "@/components/lp/section";
+import { fadeUp, reveal, stagger } from "@/lib/motion";
 
-/**
- * Methodology Block. Pinned, sticky-scrub: data points assemble linearly by
- * scroll position (useTransform, no spring — DS bans spring physics). Reduced
- * motion renders the final state flat. Cobertura e Permanência permanecem
- * fora até existir dado de campo verificado: o bloco mostra só o que já tem
- * lastro, em obediência ao princípio "cada número tem uma fonte".
- */
-const dataPoints = [
-  { label: "Método", value: "MRV-Manguezal" },
-  { label: "Amostra", value: "obs. quinzenais" },
+const legalItems = [
+  {
+    title: "ProManguezal, Decreto nº 12.045/2024",
+    body: "Programa nacional de conservação, recuperação e uso sustentável de manguezais, instituído em 2024 e que reforça a relevância institucional do setor.",
+  },
+  {
+    title: "Mercado regulado de carbono, Lei nº 15.042/2024",
+    body: "Marco regulatório do mercado brasileiro de carbono, ampliando o horizonte de comercialização de créditos no país.",
+  },
+  {
+    title: "PEPSA, Lei Estadual nº 15.133/2010 (SC)",
+    body: "Política Estadual de Serviços Ambientais de Santa Catarina. Reconhece o PSA como ferramenta de desenvolvimento sustentável e permite remunerar atividades de conservação e restauração.",
+  },
+  {
+    title: "BNDES Fundo Clima, R$42,5 bilhões autorizados (2026)",
+    body: "Linha de financiamento com custo de 1% ao ano para projetos de PSA, recomposição de cobertura vegetal e manejo sustentável. Perfil alinhado à operação da Karaguá.",
+  },
+  {
+    title: "Metodologias Verra, VM0033 e VM0007",
+    body: "Padrões internacionalmente reconhecidos para certificação de créditos de carbono azul (VM0033) e REDD+ (VM0007), com auditoria independente e verificação periódica.",
+  },
 ];
 
-function DataCell({
-  progress,
-  index,
-  label,
-  value,
-}: {
-  progress: MotionValue<number>;
-  index: number;
-  label: string;
-  value: string;
-}) {
-  // Each cell crossfades across a 30% window of the pinned scroll, in order.
-  const start = 0.15 + index * 0.3;
-  const opacity = useTransform(progress, [start, start + 0.25], [0, 1]);
-  const y = useTransform(progress, [start, start + 0.25], [24, 0]);
-  return (
-    <motion.div style={{ opacity, y }} className="bg-k-elevated p-6">
-      <dt className="text-label font-semibold tracking-[0.12em] text-k-ink-soft uppercase">
-        {label}
-      </dt>
-      <dd className="mt-3 font-mono text-data text-k-deep">{value}</dd>
-    </motion.div>
-  );
-}
-
 export function MethodologyBlock() {
-  const reduce = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-
-  const header = (
-    <SectionHeader
-      eyebrow="Metodologia"
-      title={
-        <>
-          Cada número aqui carrega <span className="font-thin">sua origem.</span>
-        </>
-      }
-    >
-      O lastro de carbono azul é calculado por parcela amostral, com cobertura verificada em campo
-      pelos Guardiões do Mangue e desconto de permanência aplicado antes da emissão. Registro pelo
-      RCGI-USP Carbon Registry.
-    </SectionHeader>
-  );
-
-  if (reduce) {
-    return (
-      <Section id="metodologia" surface="shell" fullHeight={false}>
-        {header}
-        <dl className="mt-12 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2">
-          {dataPoints.map((d) => (
-            <div key={d.label} className="bg-k-elevated p-6">
-              <dt className="text-label font-semibold tracking-[0.12em] text-k-ink-soft uppercase">
-                {d.label}
-              </dt>
-              <dd className="mt-3 font-mono text-data text-k-deep">{d.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </Section>
-    );
-  }
-
   return (
-    <Section id="metodologia" surface="shell" fullHeight={false}>
-      <div ref={ref} className="relative min-h-[140vh]">
-        <div className="sticky top-0 flex min-h-screen flex-col justify-center py-20">
-          {header}
-          <dl className="mt-12 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2">
-            {dataPoints.map((d, i) => (
-              <DataCell
-                key={d.label}
-                progress={scrollYProgress}
-                index={i}
-                label={d.label}
-                value={d.value}
-              />
-            ))}
-          </dl>
-        </div>
-      </div>
+    <Section id="legal" surface="shell" fullHeight={false}>
+      <SectionHeader
+        eyebrow="Base legal e institucional"
+        title={
+          <>
+            Estruturado sobre marcos <span className="font-thin">sólidos.</span>
+          </>
+        }
+      >
+        O projeto não depende de legislação futura. Os marcos que sustentam o modelo já existem e
+        estão em vigor.
+      </SectionHeader>
+
+      <motion.div
+        {...reveal}
+        variants={stagger}
+        className="mt-12 flex flex-col gap-px overflow-hidden rounded-md border border-border bg-border"
+      >
+        {legalItems.map((item) => (
+          <motion.div
+            key={item.title}
+            variants={fadeUp}
+            className="flex gap-4 bg-k-elevated px-6 py-5"
+          >
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-k-deep" />
+            <div>
+              <p className="font-semibold text-k-ink">{item.title}</p>
+              <p className="mt-1 text-body text-k-ink-soft">{item.body}</p>
+            </div>
+          </motion.div>
+        ))}
+      </motion.div>
     </Section>
   );
 }

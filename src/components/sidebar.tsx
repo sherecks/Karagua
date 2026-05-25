@@ -2,6 +2,7 @@ import { EASE_OUT_QUART } from "@/lib/motion";
 import { NAV_SECTIONS } from "@/lib/sections";
 import { startViewTransition } from "@/lib/view-transition";
 import { motion } from "motion/react";
+import { Link } from "react-router-dom";
 
 type SidebarProps = {
   onClose: () => void;
@@ -81,6 +82,43 @@ export function Sidebar({ onClose }: SidebarProps) {
             </motion.a>
           </li>
         ))}
+        <li>
+          <motion.div
+            initial={{ opacity: 0, x: "100%" }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: "100%" }}
+            transition={{
+              type: "tween",
+              delay: (itens.length + 1) * 0.3,
+              duration: 0.64,
+              inherit: true,
+              ease: "circInOut",
+            }}
+          >
+            <Link
+              to="/mapa"
+              onClick={() => startViewTransition(onClose)}
+              className="text-6xl font-semibold text-white transition-colors hover:text-k-bright"
+            >
+              <motion.span
+                className="inline-block origin-left"
+                style={{ fontStyle: "normal" }}
+                whileHover={{
+                  scale: 1.02,
+                  fontStyle: "italic",
+                  x: 10,
+                }}
+                transition={{
+                  type: "tween",
+                  duration: 0.6,
+                  ease: EASE_OUT_QUART,
+                }}
+              >
+                Mapa
+              </motion.span>
+            </Link>
+          </motion.div>
+        </li>
       </motion.ul>
       <motion.div className="flex h-24 flex-col gap-2 bottom-2 left-6 z-100 absolute">
         <motion.span

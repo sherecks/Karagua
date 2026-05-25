@@ -1,63 +1,46 @@
 import { motion } from "motion/react";
-import { DataPoint } from "@/components/lp/data-point";
 import { Section, SectionHeader } from "@/components/lp/section";
-import { fadeUp, reveal } from "@/lib/motion";
+import { fadeUp, reveal, stagger } from "@/lib/motion";
+
+const cards = [
+  {
+    title: "Sem mecanismo de retorno",
+    body: "A conservação do manguezal nunca foi convertida em renda para os territórios onde eles existem. Não há incentivo econômico para manter essas áreas intactas.",
+  },
+  {
+    title: "Comunidades sem remuneração",
+    body: "Pescadores e moradores que monitoram informalmente o manguezal não são reconhecidos nem remunerados por esse papel. Seu saber territorial fica de fora da cadeia produtiva.",
+  },
+  {
+    title: "Municípios sem instrumentos",
+    body: "Prefeituras litorâneas não dispõem de ferramentas financeiras para manter a conservação quando há pressão por uso do solo, urbanização ou descarte irregular.",
+  },
+  {
+    title: "Mercado com demanda crescente",
+    body: "Créditos de alta qualidade subiram de US$14 para US$26/tCO₂e em 2025 (Sylvera). A oferta de carbono azul certificado ainda é limitada. A janela é agora.",
+  },
+];
 
 export function Problema() {
   return (
     <Section id="problema" surface="shell">
-      <SectionHeader
-        eyebrow="O desafio"
-        title="O sumidouro de carbono mais denso do litoral está sob pressão."
-      >
-        Resíduos sólidos (plástico, garrafas e sacolas) entram continuamente nos manguezais pelos
-        canais de drenagem. O ecossistema que mais sequestra carbono na costa perde capacidade ano
-        após ano, e com ele um estoque de carbono azul difícil de recuperar.
+      <SectionHeader eyebrow="O problema" title="Um ativo climático que se degrada sem retorno.">
+        O Brasil concentra 7,4% dos manguezais do planeta, são 1,4 milhão de hectares com capacidade
+        de sequestro de carbono superior, por hectare, à de muitas florestas tropicais em terra
+        firme.
       </SectionHeader>
 
-      <motion.div
-        {...reveal}
-        variants={fadeUp}
-        className="mt-14 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2"
-      >
-        <div className="relative bg-k-elevated p-8">
-          <DataPoint
-            display="5×"
-            ariaLabel="Cinco vezes mais carbono que florestas terrestres"
-            sources={[
-              {
-                label:
-                  "Donato et al. (2011) — Mangroves among the most carbon-rich forests in the tropics. Nature Geoscience.",
-                url: "https://doi.org/10.1038/ngeo1123",
-              },
-              {
-                label: "Blue Carbon Initiative — About Blue Carbon.",
-                url: "https://www.thebluecarboninitiative.org/about-blue-carbon",
-              },
-            ]}
-          />
-          <p className="mt-3 text-body text-k-ink-soft">
-            O manguezal sequestra até cinco vezes mais carbono que florestas terrestres (carbono
-            azul).
-          </p>
-        </div>
-        <div className="relative bg-k-elevated p-8">
-          <DataPoint
-            value={365}
-            display="365"
-            ariaLabel="365 dias por ano de entrada de resíduos"
-            sources={[
-              {
-                label:
-                  "Observação operacional Karaguá — Guardiões do Mangue, monitoramento contínuo dos canais de drenagem em Balneário Barra do Sul (SC).",
-              },
-            ]}
-          />
-          <p className="mt-3 text-body text-k-ink-soft">
-            Dias por ano de entrada de resíduos pelos canais. O problema não tem pausa, a proteção
-            também não pode ter.
-          </p>
-        </div>
+      <motion.div {...reveal} variants={stagger} className="mt-14 grid gap-6 sm:grid-cols-2">
+        {cards.map((c) => (
+          <motion.div
+            key={c.title}
+            variants={fadeUp}
+            className="rounded-md border border-border bg-k-elevated p-6"
+          >
+            <h3 className="text-title font-semibold text-k-ink">{c.title}</h3>
+            <p className="mt-3 text-body text-k-ink-soft">{c.body}</p>
+          </motion.div>
+        ))}
       </motion.div>
     </Section>
   );

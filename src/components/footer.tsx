@@ -5,10 +5,10 @@ const SocialLinks = [
 ];
 
 const AboutLinks = [
-  { href: "#karagua-vivo", label: "Sobre" },
-  { href: "#pilares", label: "Tecnologia" },
-  { href: "#carbono-azul", label: "Carbono azul" },
-  { href: "#metodologia", label: "Metodologia" },
+  { href: "#solucao", label: "Solução" },
+  { href: "#impacto", label: "Impacto" },
+  { href: "#como-funciona", label: "Como funciona" },
+  { href: "#empresas", label: "Para empresas" },
 ];
 
 const LegalLinks = [

@@ -1,88 +1,117 @@
-import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
-import type { MotionValue } from "motion/react";
-import { useRef } from "react";
+import { motion } from "motion/react";
+import { DataPoint } from "@/components/lp/data-point";
 import { Section, SectionHeader } from "@/components/lp/section";
-import { fadeIn, reveal, stagger } from "@/lib/motion";
+import { fadeUp, reveal, stagger } from "@/lib/motion";
 
-const traits = [
+const stats = [
   {
-    t: "Lastro georreferenciado",
-    d: "Cada ecobarreira tem coordenada, data e responsável. O ativo é rastreável até o ponto.",
+    display: "1,4M ha",
+    label: "de manguezais no Brasil",
+    detail: "7,4% da área global de manguezais",
+    ariaLabel: "1,4 milhão de hectares de manguezais no Brasil",
+    sources: [
+      {
+        label: "MapBiomas — Relatório Anual do Desmatamento no Brasil, 2023.",
+        url: "https://mapbiomas.org/",
+      },
+    ],
   },
   {
-    t: "Dados públicos",
-    d: "Monitoramento aberto e acessível. Auditar um número é parte do projeto, não um favor.",
+    display: "US$50B",
+    label: "mercado global de carbono",
+    detail: "projeção até 2030 (McKinsey)",
+    ariaLabel: "Cinquenta bilhões de dólares de mercado global de carbono até 2030",
+    sources: [
+      {
+        label:
+          "McKinsey & Company — A blueprint for scaling voluntary carbon markets to meet the climate challenge, 2021.",
+        url: "https://www.mckinsey.com/capabilities/sustainability/our-insights/a-blueprint-for-scaling-voluntary-carbon-markets-to-meet-the-climate-challenge",
+      },
+    ],
   },
   {
-    t: "Registro independente",
-    d: "Contabilidade de carbono azul pelo RCGI-USP Carbon Registry (Research Centre for Greenhouse Gas Innovation, Universidade de São Paulo).",
+    display: "70%",
+    label: "das espécies-alvo da pesca",
+    detail: "se reproduzem na Baía da Babitonga",
+    ariaLabel: "70% das espécies-alvo da pesca se reproduzem na Baía da Babitonga",
+    sources: [
+      {
+        label:
+          "ICMBio — Plano de Manejo da APA da Baleia Franca e estudos sobre a Baía da Babitonga.",
+      },
+    ],
+  },
+  {
+    display: "4.000 ha",
+    label: "meta de cobertura",
+    detail: "50% da Baía da Babitonga até 2035",
+    ariaLabel: "4 mil hectares de meta de cobertura até 2035",
+    sources: [
+      {
+        label: "Karaguá Ecotech — Plano estratégico de expansão territorial, 2024.",
+      },
+    ],
   },
 ];
 
-function TraitCard({
-  progress,
-  index,
-  t,
-  d,
-}: {
-  progress: MotionValue<number>;
-  index: number;
-  t: string;
-  d: string;
-}) {
-  // Contained parallax: each column drifts a few px against the scroll, the
-  // outer columns more than the centre. Linear map, never a spring (DS).
-  const depth = (index - 1) * 18;
-  const y = useTransform(progress, [0, 1], [depth, -depth]);
-  return (
-    <motion.div
-      variants={fadeIn}
-      style={{ y }}
-      className="rounded-md border border-border bg-k-elevated p-6"
-    >
-      <h3 className="text-title font-semibold text-k-ink">{t}</h3>
-      <p className="mt-3 text-body text-k-ink-soft">{d}</p>
-    </motion.div>
-  );
-}
+const dimensions = [
+  {
+    t: "Climático",
+    d: "Créditos de carbono azul certificados pelas metodologias VM0033 e VM0007 da Verra, destinados a empresas com metas de descarbonização e estratégias ESG verificáveis.",
+  },
+  {
+    t: "Ecológico",
+    d: "Conservação de berçário marinho, barreira contra erosão costeira e proteção de espécies ameaçadas como toninha, boto-cinza, tartaruga-verde e mero na Baía da Babitonga.",
+  },
+  {
+    t: "Social",
+    d: "Mais de 400 famílias impactadas até 2035, com renda gerada diretamente pelo PSA, compartilhamento de receita com municípios e formação de estudantes via UDESC e Univille.",
+  },
+  {
+    t: "Tecnológico",
+    d: "Dados ambientais coletados por IoTs, rastreabilidade completa das ações de restauração e transparência pública via plataforma digital aberta, fortalecendo a credibilidade dos créditos no mercado.",
+  },
+];
 
 export function CarbonoAzul() {
-  const reduce = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start end", "end start"],
-  });
-
   return (
-    <Section id="carbono-azul" surface="shell" fullHeight={false}>
-      <SectionHeader eyebrow="Carbono azul" title="Um ativo ambiental de alta integridade.">
-        O manguezal é um dos sumidouros de carbono mais densos do planeta. Karaguá converte essa
-        captura em ativo verificável, com lastro que o comprador audita ponto a ponto. Confiança
-        deixa de ser premissa, vira evidência.
+    <Section id="impacto" surface="shell" fullHeight={false}>
+      <SectionHeader eyebrow="Impacto" title="Quatro dimensões de resultado.">
+        Climático, ecológico, social e tecnológico. O modelo foi desenhado para que cada dimensão
+        sustente as demais.
       </SectionHeader>
 
-      {reduce ? (
-        <div className="mt-14 grid gap-6 md:grid-cols-3">
-          {traits.map((x) => (
-            <div key={x.t} className="rounded-md border border-border bg-k-elevated p-6">
-              <h3 className="text-title font-semibold text-k-ink">{x.t}</h3>
-              <p className="mt-3 text-body text-k-ink-soft">{x.d}</p>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <motion.div
-          ref={ref}
-          {...reveal}
-          variants={stagger}
-          className="mt-14 grid gap-6 md:grid-cols-3"
-        >
-          {traits.map((x, i) => (
-            <TraitCard key={x.t} progress={scrollYProgress} index={i} t={x.t} d={x.d} />
-          ))}
-        </motion.div>
-      )}
+      <motion.div
+        {...reveal}
+        variants={stagger}
+        className="mt-12 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 lg:grid-cols-4"
+      >
+        {stats.map((s) => (
+          <motion.div key={s.label} variants={fadeUp} className="relative bg-k-elevated p-6">
+            <DataPoint
+              display={s.display}
+              ariaLabel={s.ariaLabel}
+              sources={s.sources}
+              size="headline"
+            />
+            <p className="mt-2 text-body text-k-ink">{s.label}</p>
+            <p className="mt-1 text-body text-k-ink-soft">{s.detail}</p>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      <motion.div {...reveal} variants={stagger} className="mt-6 grid gap-6 sm:grid-cols-2">
+        {dimensions.map((x) => (
+          <motion.div
+            key={x.t}
+            variants={fadeUp}
+            className="rounded-md border border-border bg-k-elevated p-6"
+          >
+            <h3 className="text-title font-semibold text-k-ink">{x.t}</h3>
+            <p className="mt-3 text-body text-k-ink-soft">{x.d}</p>
+          </motion.div>
+        ))}
+      </motion.div>
     </Section>
   );
 }

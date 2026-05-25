@@ -6,7 +6,7 @@ export const SITE_NAME = "Karaguá";
 export const SITE_TITLE = "Karaguá · Preservando os manguezais";
 
 export const SITE_DESCRIPTION =
-  "Restauração de manguezal em Balneário Barra do Sul (SC) com economia circular, carbono azul verificável e protagonismo comunitário. Cada número tem uma fonte.";
+  "A Karaguá Ecotech estrutura projetos de certificação de créditos de carbono azul em manguezais, integrando ciência aplicada, tecnologia de monitoramento e participação comunitária remunerada.";
 
 export const SITE_LOCALE = "pt_BR";
 
