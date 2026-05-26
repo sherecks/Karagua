@@ -21,6 +21,8 @@ type DataPointProps = {
   ariaLabel: string;
   /** Classes para o slot do número. */
   className?: string;
+  /** Override do tamanho do número (ex.: big number impactante). Vence `size` via twMerge. */
+  numberClassName?: string;
   /** Tamanho tipográfico. Default 'display'. */
   size?: "display" | "headline";
   /** Duração do count-up em ms. Default 1400. */
@@ -45,6 +47,7 @@ export function DataPoint({
   sources,
   ariaLabel,
   className,
+  numberClassName,
   size = "display",
   countDurationMs = 1400,
 }: DataPointProps) {
@@ -101,7 +104,9 @@ export function DataPoint({
           className,
         )}
       >
-        <span className={cn("font-mono text-k-deep tabular-nums", sizeClass)}>{text}</span>
+        <span className={cn("font-mono text-k-deep tabular-nums", sizeClass, numberClassName)}>
+          {text}
+        </span>
         {suffix ? (
           <span className={cn("font-mono text-k-deep", suffixSizeClass)}>{suffix}</span>
         ) : null}

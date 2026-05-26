@@ -6,26 +6,25 @@ import { SITE_EMAIL } from "@/lib/site";
 
 export function CtaFinal() {
   return (
-    <Section id="contato" surface="fog">
-      <motion.div {...reveal} variants={stagger} className="mx-auto max-w-3xl text-center">
+    <Section id="contato" surface="shell">
+      <motion.div {...reveal} variants={stagger} className="flex flex-col">
         <motion.p
           variants={fadeUp}
-          className="text-label font-semibold tracking-[0.12em] uppercase text-k-ink-soft mb-6"
+          className="text-label font-semibold tracking-[0.12em] text-k-ink-soft uppercase"
         >
           Contato
         </motion.p>
-        <motion.h2 variants={fadeUp} className="text-headline font-thin text-k-ink">
-          Pronto para transformar conservação em{" "}
-          <span className="font-bold text-k-deep">valor?</span>
-        </motion.h2>
-        <motion.p variants={fadeUp} className="mx-auto mt-6 max-w-xl text-body text-k-ink-soft">
-          Estamos em busca de empresas compradoras de créditos de carbono azul, apoiadores
-          institucionais e parceiros estratégicos que queiram participar de um modelo que une
-          retorno financeiro, restauração da natureza e impacto social.
-        </motion.p>
-        <motion.div variants={fadeUp} className="mt-10 flex flex-wrap justify-center gap-4">
+
+        <h2 className="mt-10 max-w-[16ch] overflow-hidden text-[clamp(2.5rem,5vw,5rem)] leading-[1] font-thin text-k-ink">
+          <motion.span variants={fadeUp} className="block">
+            Pronto para transformar conservação em{" "}
+            <span className="font-bold text-k-deep">valor?</span>
+          </motion.span>
+        </h2>
+
+        <motion.div variants={fadeUp} className="mt-12 flex flex-wrap items-center gap-4">
           <Button asChild size="lg">
-            <a href={`mailto:${SITE_EMAIL}?subject=Karagu%C3%A1%20Ecotech%20%E2%80%94%20Contato`}>
+            <a href={`mailto:${SITE_EMAIL}?subject=Contato%20Karagu%C3%A1%20Ecotech`}>
               Entrar em contato
             </a>
           </Button>
@@ -33,10 +32,8 @@ export function CtaFinal() {
             <a href="#solucao">Conhecer a solução</a>
           </Button>
         </motion.div>
-        <motion.p
-          variants={fadeUp}
-          className="mt-12 border-t border-border pt-8 text-body text-k-ink-soft"
-        >
+
+        <motion.p variants={fadeUp} className="mt-16 font-mono text-data text-k-ink-soft">
           Balneário Barra do Sul · Santa Catarina · Brasil
         </motion.p>
       </motion.div>

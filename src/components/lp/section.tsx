@@ -3,15 +3,18 @@ import { useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
 
-type Surface = "shell" | "fog" | "elevated" | "carbon";
+type Surface = "shell" | "fog" | "elevated" | "carbon" | "primary";
 
 const surfaceClass: Record<Surface, string> = {
-  // DS: depth is tonal, not shadow. Step shell -> fog -> elevated -> carbon.
+  // DS: depth is tonal, not shadow, and not borders. Separation is the surface
+  // change itself: shell -> fog -> elevated -> carbon. No divider lines.
   shell: "bg-background",
-  fog: "bg-k-fog border-y border-border",
-  elevated: "bg-k-elevated border-y border-border",
+  fog: "bg-k-fog",
+  elevated: "bg-k-elevated",
   // Carbon inverts the whole shadcn semantic layer via `.dark`.
-  carbon: "dark bg-background text-foreground border-y border-border",
+  carbon: "dark bg-background text-foreground",
+  // Primary: fundo da cor primary + texto branco (ver .surface-primary no CSS).
+  primary: "surface-primary",
 };
 
 /**
@@ -56,7 +59,10 @@ export function Section({
         className,
       )}
     >
-      <motion.div style={innerStyle} className="mx-auto w-full max-w-6xl px-6">
+      <motion.div
+        style={innerStyle}
+        className="mx-auto w-full max-w-[120rem] px-6 md:px-10 lg:px-16"
+      >
         {children}
       </motion.div>
     </section>

@@ -21,11 +21,11 @@ const LegalLinks = [
 /** Footer — carbon surface, restrained. Brand mark in bright on dark. */
 export function Footer() {
   return (
-    <footer className="dark bg-background ">
+    <footer className="surface-primary">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-12">
         <div className="flex flex-row col-span-4 justify-between">
-          <div className="bg-background flex flex-col gap-2 items-start">
-            <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12 mb-4" />
+          <div className="flex flex-col gap-2 items-start">
+            <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12 mb-4 brightness-0" />
             <span className="text-xs text-foreground/70">65.981.337/0001-72</span>
             <span className="text-xs text-foreground/70">
               RUA BORBA GATO 700, APT 1103 A · ATIRADORES

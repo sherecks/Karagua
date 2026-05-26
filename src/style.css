@@ -78,8 +78,9 @@
   --card-foreground: var(--k-color-text-primary);
   --popover: var(--k-color-surface-elevated);
   --popover-foreground: var(--k-color-text-primary);
-  --primary: var(--k-color-green-karagua-deep);
-  --primary-foreground: var(--k-color-surface-shell);
+  /* Primary = verde do logo (#c7d926). Texto do botão escuro (carbon) p/ ~10:1. */
+  --primary: var(--k-color-green-karagua);
+  --primary-foreground: var(--k-color-surface-carbon);
   --secondary: var(--k-color-surface-fog);
   --secondary-foreground: var(--k-color-text-primary);
   --muted: var(--k-color-surface-fog);
@@ -304,4 +305,50 @@
     animation-duration: 0.32s;
     animation-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
   }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Post-audit (v2) scope — isolado da home `/`. Corrige os achados do
+   /impeccable audit por escopo: contraste AA (texto secundário + acento olive),
+   touch target >=44px e fonte do DataPoint fora do fluxo quando fechada (mata o
+   overflow horizontal no mobile). Override de tokens raw + aliases --color-*.
+   ─────────────────────────────────────────────────────────────────────────── */
+.v2-surface {
+  --k-color-text-secondary: #52606e; /* 5.9:1 shell / 5.3:1 fog (AA) */
+  --color-k-ink-soft: #52606e;
+  --k-color-green-karagua-deep: #5f6a12; /* 5.4:1 shell / 4.8:1 fog (AA) p/ acento de texto */
+  --color-k-deep: #5f6a12;
+}
+.v2-surface [data-slot="button"][data-size="lg"] {
+  height: 2.75rem; /* 44px touch target */
+}
+.v2-surface [role="tooltip"][aria-hidden="true"] {
+  display: none; /* out of layout when closed: no mobile horizontal overflow */
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Surface primary — seções com fundo `primary` e texto branco (Karaguá Vivo,
+   Impacto, Footer). Remapeia os tokens de texto p/ branco; se o valor de
+   `--primary` mudar, a legibilidade acompanha automaticamente.
+   ─────────────────────────────────────────────────────────────────────────── */
+.surface-primary {
+  background-color: var(--primary);
+  color: #2c3e50; /* k-color-text-primary sobre lima ≈ 7:1 (menos contraste) */
+  --foreground: #2c3e50;
+  --color-foreground: #2c3e50;
+  --k-color-text-primary: #2c3e50;
+  --color-k-ink: #2c3e50;
+  --k-color-text-secondary: #45566a; /* secundário mais suave ≈ 4.8:1 */
+  --color-k-ink-soft: #45566a;
+  --k-color-green-karagua-deep: #2c3e50;
+  --color-k-deep: #2c3e50;
+  --border: color-mix(in srgb, #2c3e50 22%, transparent);
+  --color-border: color-mix(in srgb, #2c3e50 22%, transparent);
+}
+/* O popover de fonte mantém superfície clara + texto escuro mesmo sobre primary. */
+.surface-primary [role="tooltip"] {
+  --k-color-text-primary: #2c3e50;
+  --color-k-ink: #2c3e50;
+  --color-k-ink-soft: #6b7b8d;
+  color: #2c3e50;
 }

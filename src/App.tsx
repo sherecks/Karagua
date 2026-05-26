@@ -16,10 +16,12 @@ import { Cursor } from "@/components/cursor";
 import { Sidebar } from "@/components/sidebar";
 import { Equal, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import { Loader, LOADER_SESSION_TOTAL_MS } from "./components/loader";
-import { MapPage } from "@/pages/MapPage";
+
+// Lazy: tira o Leaflet/MapPage do bundle inicial da home (achado P2 do audit).
+const MapPage = lazy(() => import("@/pages/MapPage").then((m) => ({ default: m.MapPage })));
 
 const iconTransition = { duration: 0.25, ease: EASE_OUT_QUART } as const;
 
@@ -39,7 +41,10 @@ function LandingPage() {
         <AnimatePresence>{isOpen && <Sidebar onClose={() => setIsOpen(false)} />}</AnimatePresence>
         {!loading && <ScrollRail />}
 
-        <div className="flex mx-auto flex-row items-center px-8 py-4 justify-between sticky w-full z-100">
+        <nav
+          aria-label="Navegação principal"
+          className="flex mx-auto flex-row items-center px-8 py-4 justify-between sticky w-full z-100"
+        >
           <a href="#topo" style={{ viewTransitionName: "brand-mark" }}>
             <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12" />
           </a>
@@ -48,6 +53,8 @@ function LandingPage() {
             <motion.button
               type="button"
               onClick={() => startViewTransition(() => setIsOpen((v) => !v))}
+              aria-label={isOpen ? "Fechar menu" : "Abrir menu"}
+              aria-expanded={isOpen}
               className="relative bg-background cursor-pointer inline-flex size-10 rounded-full items-center justify-center"
               style={{ viewTransitionName: "menu-toggle" }}
             >
@@ -78,7 +85,7 @@ function LandingPage() {
               </AnimatePresence>
             </motion.button>
           </div>
-        </div>
+        </nav>
 
         <main>
           <Cursor />
@@ -97,11 +104,29 @@ function LandingPage() {
   );
 }
 
+// Versão pós-audit: a home dentro do escopo `.v2-surface` (contraste AA, touch
+// 44px, DataPoint sem overflow). Fork "só o que muda" via CSS escopado.
+function PosAudit() {
+  return (
+    <div className="v2-surface">
+      <LandingPage />
+    </div>
+  );
+}
+
 export function App() {
   return (
     <MotionConfig reducedMotion="user">
       <Routes>
-        <Route path="/mapa" element={<MapPage />} />
+        <Route
+          path="/mapa"
+          element={
+            <Suspense fallback={null}>
+              <MapPage />
+            </Suspense>
+          }
+        />
+        <Route path="/v2" element={<PosAudit />} />
         <Route path="*" element={<LandingPage />} />
       </Routes>
     </MotionConfig>
