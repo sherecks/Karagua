@@ -3,14 +3,39 @@ import { Link } from "react-router-dom";
 import { supabase, type PontoInteresse } from "@/lib/supabase";
 
 const TIPOS = ["monitoramento", "flora", "fauna"] as const;
+type Tipo = (typeof TIPOS)[number];
 
-const empty = { nome: "", latitude: "", longitude: "", dados: "", tipo: "monitoramento" as const };
+const TIPO_LABELS: Record<Tipo, string> = {
+  monitoramento: "Monitoramento",
+  flora: "Flora",
+  fauna: "Fauna",
+};
+
+const TIPO_COLORS: Record<Tipo, string> = {
+  monitoramento: "bg-[#1A2332] text-white",
+  flora: "bg-[#4E8748] text-white",
+  fauna: "bg-[#1a6a8a] text-white",
+};
+
+const empty = { nome: "", latitude: "", longitude: "", dados: "", tipo: "monitoramento" as Tipo };
+
+type EditState = {
+  id: string;
+  nome: string;
+  latitude: string;
+  longitude: string;
+  dados: string;
+  tipo: Tipo;
+};
 
 export function AdminPage() {
   const [pontos, setPontos] = useState<PontoInteresse[]>([]);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState("");
+  const [editing, setEditing] = useState<EditState | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [erroEdit, setErroEdit] = useState("");
 
   async function fetchPontos() {
     const { data } = await supabase
@@ -33,7 +58,6 @@ export function AdminPage() {
       setErro("Latitude e longitude precisam ser números.");
       return;
     }
-
     setSaving(true);
     const payload: Omit<PontoInteresse, "id" | "created_at"> = {
       nome: form.nome,
@@ -57,6 +81,53 @@ export function AdminPage() {
     void fetchPontos();
   }
 
+  function startEdit(p: PontoInteresse) {
+    setEditing({
+      id: p.id,
+      nome: p.nome,
+      latitude: String(p.latitude),
+      longitude: String(p.longitude),
+      dados: p.dados,
+      tipo: p.tipo,
+    });
+    setErroEdit("");
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setErroEdit("");
+    const lat = parseFloat(editing.latitude);
+    const lng = parseFloat(editing.longitude);
+    if (isNaN(lat) || isNaN(lng)) {
+      setErroEdit("Latitude e longitude precisam ser números.");
+      return;
+    }
+    setSavingEdit(true);
+    const { error } = await supabase
+      .from("pontos_interesse")
+      .update({
+        nome: editing.nome,
+        latitude: lat,
+        longitude: lng,
+        dados: editing.dados,
+        tipo: editing.tipo,
+      })
+      .eq("id", editing.id);
+    setSavingEdit(false);
+    if (error) {
+      setErroEdit(error.message);
+      return;
+    }
+    setEditing(null);
+    void fetchPontos();
+  }
+
+  const byTipo = TIPOS.map((tipo) => ({
+    tipo,
+    items: pontos.filter((p) => p.tipo === tipo),
+  }));
+
   return (
     <div className="min-h-screen bg-k-shell">
       <header className="flex items-center justify-between px-8 py-4 border-b border-border bg-background">
@@ -73,7 +144,7 @@ export function AdminPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-8 py-12 flex flex-col gap-12">
+      <main className="max-w-5xl mx-auto px-8 py-12 flex flex-col gap-12">
         {/* Formulário */}
         <section>
           <h2 className="text-title font-semibold text-k-ink mb-6">Novo ponto</h2>
@@ -93,14 +164,12 @@ export function AdminPage() {
                 <span className="text-label text-k-ink-soft uppercase tracking-wide">Tipo</span>
                 <select
                   value={form.tipo}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, tipo: e.target.value as typeof form.tipo }))
-                  }
+                  onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as Tipo }))}
                   className="border border-border rounded-md px-3 py-2 text-body bg-background text-k-ink focus:outline-none focus:ring-2 focus:ring-k-deep"
                 >
                   {TIPOS.map((t) => (
                     <option key={t} value={t}>
-                      {t}
+                      {TIPO_LABELS[t]}
                     </option>
                   ))}
                 </select>
@@ -151,7 +220,108 @@ export function AdminPage() {
           </form>
         </section>
 
-        {/* Lista */}
+        {/* Modal de edição */}
+        {editing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="bg-background rounded-lg shadow-xl w-full max-w-lg p-6 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-title font-semibold text-k-ink">Editar ponto</h3>
+                <button
+                  onClick={() => setEditing(null)}
+                  className="text-k-ink-soft hover:text-k-ink transition-colors text-xl leading-none"
+                  aria-label="Fechar"
+                >
+                  ×
+                </button>
+              </div>
+              <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-label text-k-ink-soft uppercase tracking-wide">Nome</span>
+                    <input
+                      required
+                      value={editing.nome}
+                      onChange={(e) => setEditing((ed) => ed && { ...ed, nome: e.target.value })}
+                      className="border border-border rounded-md px-3 py-2 text-body bg-k-shell text-k-ink focus:outline-none focus:ring-2 focus:ring-k-deep"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-label text-k-ink-soft uppercase tracking-wide">Tipo</span>
+                    <select
+                      value={editing.tipo}
+                      onChange={(e) =>
+                        setEditing((ed) => ed && { ...ed, tipo: e.target.value as Tipo })
+                      }
+                      className="border border-border rounded-md px-3 py-2 text-body bg-k-shell text-k-ink focus:outline-none focus:ring-2 focus:ring-k-deep"
+                    >
+                      {TIPOS.map((t) => (
+                        <option key={t} value={t}>
+                          {TIPO_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-label text-k-ink-soft uppercase tracking-wide">
+                      Latitude
+                    </span>
+                    <input
+                      required
+                      value={editing.latitude}
+                      onChange={(e) =>
+                        setEditing((ed) => ed && { ...ed, latitude: e.target.value })
+                      }
+                      className="border border-border rounded-md px-3 py-2 font-mono text-body bg-k-shell text-k-ink focus:outline-none focus:ring-2 focus:ring-k-deep"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-label text-k-ink-soft uppercase tracking-wide">
+                      Longitude
+                    </span>
+                    <input
+                      required
+                      value={editing.longitude}
+                      onChange={(e) =>
+                        setEditing((ed) => ed && { ...ed, longitude: e.target.value })
+                      }
+                      className="border border-border rounded-md px-3 py-2 font-mono text-body bg-k-shell text-k-ink focus:outline-none focus:ring-2 focus:ring-k-deep"
+                    />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-label text-k-ink-soft uppercase tracking-wide">
+                    Descrição
+                  </span>
+                  <textarea
+                    value={editing.dados}
+                    onChange={(e) => setEditing((ed) => ed && { ...ed, dados: e.target.value })}
+                    rows={3}
+                    className="border border-border rounded-md px-3 py-2 text-body bg-k-shell text-k-ink resize-none focus:outline-none focus:ring-2 focus:ring-k-deep"
+                  />
+                </label>
+                {erroEdit && <p className="text-sm text-k-coral">{erroEdit}</p>}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="bg-k-deep text-white px-6 py-2 rounded-md text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {savingEdit ? "Salvando..." : "Salvar alterações"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(null)}
+                    className="text-sm text-k-ink-soft hover:text-k-ink transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Grid por tipo */}
         <section>
           <h2 className="text-title font-semibold text-k-ink mb-6">
             Pontos cadastrados{" "}
@@ -160,34 +330,57 @@ export function AdminPage() {
           {pontos.length === 0 ? (
             <p className="text-body text-k-ink-soft">Nenhum ponto cadastrado ainda.</p>
           ) : (
-            <ul className="flex flex-col gap-3">
-              {pontos.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-start justify-between gap-4 bg-background border border-border rounded-md px-4 py-3"
-                >
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-k-ink text-sm truncate">{p.nome}</span>
-                      <span className="text-label uppercase tracking-wide text-k-ink-soft bg-k-fog px-2 py-0.5 rounded-md shrink-0">
-                        {p.tipo}
-                      </span>
-                    </div>
-                    <span className="font-mono text-data text-k-ink-soft">
-                      {p.latitude}, {p.longitude}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {byTipo.map(({ tipo, items }) => (
+                <div key={tipo} className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-label font-semibold uppercase tracking-wide px-2.5 py-1 rounded-md ${TIPO_COLORS[tipo]}`}
+                    >
+                      {TIPO_LABELS[tipo]}
                     </span>
-                    {p.dados && <p className="text-sm text-k-ink-soft truncate">{p.dados}</p>}
+                    <span className="text-label text-k-ink-soft">{items.length}</span>
                   </div>
-                  <button
-                    onClick={() => handleDelete(p.id)}
-                    className="text-k-ink-soft hover:text-k-coral transition-colors text-sm shrink-0"
-                    aria-label="Remover ponto"
-                  >
-                    Remover
-                  </button>
-                </li>
+                  {items.length === 0 ? (
+                    <p className="text-sm text-k-ink-soft italic">Nenhum ponto</p>
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {items.map((p) => (
+                        <li
+                          key={p.id}
+                          className="flex flex-col gap-1.5 bg-background border border-border rounded-md px-4 py-3"
+                        >
+                          <span className="font-semibold text-k-ink text-sm leading-snug">
+                            {p.nome}
+                          </span>
+                          <span className="font-mono text-data text-k-ink-soft">
+                            {p.latitude}, {p.longitude}
+                          </span>
+                          {p.dados && (
+                            <p className="text-sm text-k-ink-soft line-clamp-2">{p.dados}</p>
+                          )}
+                          <div className="flex items-center gap-3 pt-1">
+                            <button
+                              onClick={() => startEdit(p)}
+                              className="text-xs text-k-deep font-semibold hover:opacity-70 transition-opacity"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleDelete(p.id)}
+                              className="text-xs text-k-ink-soft hover:text-k-coral transition-colors"
+                              aria-label="Remover ponto"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </section>
       </main>

@@ -18,7 +18,7 @@ export function CtaFinal() {
         <h2 className="mt-10 max-w-[16ch] overflow-hidden text-[clamp(2.5rem,5vw,5rem)] leading-[1] font-thin text-k-ink">
           <motion.span variants={fadeUp} className="block">
             Pronto para transformar conservação em{" "}
-            <span className="font-bold text-k-deep">valor?</span>
+            <span className="font-bold text-k-bright">valor?</span>
           </motion.span>
         </h2>
 

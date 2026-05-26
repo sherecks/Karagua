@@ -6,13 +6,13 @@ import { fadeUp, reveal, stagger } from "@/lib/motion";
 const IMP_IMG = `${import.meta.env.BASE_URL}images/image01.png`.replace(/\/+/g, "/");
 
 // Big number gigante e branco (override do text-k-deep do DataPoint via twMerge).
-const BIG_NUMBER = "text-[clamp(3.5rem,11vw,11rem)] leading-[0.85] text-white";
+const BIG_NUMBER = "text-[clamp(2.2rem,8vw,8rem)] leading-[0.85] text-white";
 
 const stats = [
   {
     display: "US$50B",
-    label: "mercado global de carbono projetado até 2030",
-    ariaLabel: "Cinquenta bilhões de dólares de mercado global de carbono até 2030",
+    label: "essa é a projeção para o mercado brasileiro de carbono até 2030",
+    ariaLabel: "50 bilhões de dólares de mercado global de carbono até 2030",
     sources: [
       {
         label: "McKinsey & Company, A blueprint for scaling voluntary carbon markets, 2021.",
@@ -22,9 +22,9 @@ const stats = [
   },
   {
     display: "4.000",
-    label: "hectares de meta de cobertura, 50% da Babitonga até 2035",
-    ariaLabel: "4 mil hectares de meta de cobertura até 2035",
-    sources: [{ label: "Karaguá Ecotech, plano estratégico de expansão territorial, 2024." }],
+    label: "hectares é a meta de cobertura da Karaguá e 50% da Babitonga até 2036",
+    ariaLabel: "4 mil hectares de meta de cobertura e 50% da Babitonga até 2036",
+    sources: [{ label: "Karaguá Ecotech, plano estratégico de expansão territorial, 2026." }],
   },
 ];
 
@@ -54,7 +54,7 @@ export function CarbonoAzul() {
         <motion.div
           {...reveal}
           variants={stagger}
-          className="relative mx-auto flex h-full min-h-[68vh] w-full max-w-[120rem] flex-col justify-between gap-16 px-6 py-16 md:px-10 md:py-20 lg:px-16"
+          className="relative mx-auto flex h-full min-h-[64vh] w-full max-w-[120rem] flex-col justify-between gap-12 px-8 py-16 md:px-10 md:py-20 lg:px-16"
         >
           <motion.div variants={fadeUp} className="max-w-[42ch]">
             <DataPoint
@@ -63,7 +63,7 @@ export function CarbonoAzul() {
               sources={stats[0].sources}
               numberClassName={BIG_NUMBER}
             />
-            <p className="mt-4 text-body text-white/85">{stats[0].label}</p>
+            <p className="mt-4 text-body text-white">{stats[0].label}</p>
           </motion.div>
 
           <motion.div
@@ -76,7 +76,7 @@ export function CarbonoAzul() {
               sources={stats[1].sources}
               numberClassName={BIG_NUMBER}
             />
-            <p className="mt-4 text-body text-white/85">{stats[1].label}</p>
+            <p className="mt-4 text-body text-white">{stats[1].label}</p>
           </motion.div>
         </motion.div>
       </div>
