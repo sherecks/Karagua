@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40" width="32" height="40">
+  <!-- Pin body -->
+  <path d="M16 0C9.373 0 0 7.163 0 16c0 7.5 5.5 13.5 10.5 17.5L16 40l5.5-6.5C26.5 29.5 32 23.5 32 16 32 7.163 22.627 0 16 0z" fill="#4E8748"/>
+  <!-- Leaf shape -->
+  <path d="M16 7 C10 11 9 14 9 16.5 C9 20.5 12 23 16 23 C20 23 23 20.5 23 16.5 C23 14 22 11 16 7z" fill="#c7d926"/>
+  <!-- Stem -->
+  <line x1="16" y1="23" x2="16" y2="9" stroke="#4E8748" stroke-width="1.2" stroke-linecap="round"/>
+</svg>

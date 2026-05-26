@@ -3,7 +3,7 @@ import { DataPoint } from "@/components/lp/data-point";
 import { SectionHeader } from "@/components/lp/section";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
 
-const PROB_IMG = `${import.meta.env.BASE_URL}images/image02.png`.replace(/\/+/g, "/");
+const PROB_IMG = `${import.meta.env.BASE_URL}images/image05.png`.replace(/\/+/g, "/");
 
 const STAT_NUM = "text-[clamp(1.75rem,3vw,3rem)] leading-[0.95]";
 
@@ -19,7 +19,9 @@ const stats = [
     display: "R$1,2M",
     label: "receita anual estimada em créditos",
     ariaLabel: "1,2 milhão de reais por ano de receita estimada em créditos de carbono",
-    sources: [{ label: "Karaguá Ecotech, projeção de receita do business plan (estimativa interna)." }],
+    sources: [
+      { label: "Karaguá Ecotech, projeção de receita do business plan (estimativa interna)." },
+    ],
   },
   {
     display: "380",
@@ -31,7 +33,9 @@ const stats = [
     display: "400+",
     label: "famílias impactadas até 2035",
     ariaLabel: "mais de 400 famílias impactadas até 2035",
-    sources: [{ label: "Karaguá Ecotech, projeção de impacto socioambiental (estimativa interna)." }],
+    sources: [
+      { label: "Karaguá Ecotech, projeção de impacto socioambiental (estimativa interna)." },
+    ],
   },
 ];
 
@@ -69,11 +73,7 @@ export function Problema() {
         />
         <div className="relative flex h-full flex-col justify-center gap-14 p-8 md:p-12 lg:p-16">
           {overImage.map((p) => (
-            <div
-              key={p.n}
-              style={{ mixBlendMode: "difference" }}
-              className="flex items-baseline gap-5 text-white"
-            >
+            <div key={p.n} className="flex items-baseline gap-5 text-white">
               <span className="font-mono text-data">{p.n}</span>
               <h3 className={SUBHEAD}>{p.title}</h3>
             </div>
@@ -98,11 +98,7 @@ export function Problema() {
           </motion.div>
         </div>
 
-        <motion.div
-          {...reveal}
-          variants={stagger}
-          className="grid grid-cols-2 gap-x-10 gap-y-8"
-        >
+        <motion.div {...reveal} variants={stagger} className="grid grid-cols-2 gap-x-10 gap-y-8">
           {stats.map((s) => (
             <motion.div key={s.label} variants={fadeUp}>
               <DataPoint

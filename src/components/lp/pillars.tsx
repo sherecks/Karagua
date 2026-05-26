@@ -33,7 +33,11 @@ export function Pillars() {
         title="Carbono Azul com dados verificáveis, comunidade remunerada e escala territorial."
       />
 
-      <motion.div {...reveal} variants={stagger} className="mt-20 grid gap-x-16 gap-y-14 md:grid-cols-3">
+      <motion.div
+        {...reveal}
+        variants={stagger}
+        className="mt-20 grid gap-x-16 gap-y-14 md:grid-cols-3"
+      >
         {solutions.map((s) => (
           <motion.div key={s.title} variants={fadeUp} className="flex flex-col gap-4">
             <span className="font-mono text-data text-k-deep">

@@ -72,21 +72,117 @@ class KaraguaLeafletMap extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <style>
+        @font-face {
+          font-family: 'Aileron';
+          src: url('/fonts/aileron-regular.woff2') format('woff2');
+          font-weight: 400;
+          font-style: normal;
+        }
+        @font-face {
+          font-family: 'Aileron';
+          src: url('/fonts/aileron-semibold.woff2') format('woff2');
+          font-weight: 600;
+          font-style: normal;
+        }
+
         :host { display: block; width: 100%; height: 100%; }
         #map { width: 100%; height: 100%; min-height: 400px; }
+
+        /* Zoom controls */
+        .leaflet-control-zoom {
+          border: none !important;
+          box-shadow: none !important;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .leaflet-control-zoom-in,
+        .leaflet-control-zoom-out {
+          width: 36px !important;
+          height: 36px !important;
+          line-height: 36px !important;
+          color: #2C3E50 !important;
+          border-radius: 6px !important;
+          font-family: 'Aileron', sans-serif !important;
+          font-size: 18px !important;
+          font-weight: 400 !important;
+          text-decoration: none !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          transition: background 0.15s, color 0.15s;
+        }
+        .leaflet-control-zoom-in:hover,
+        .leaflet-control-zoom-out:hover {
+          color: #2C3E50 !important;
+        }
+        .leaflet-control-zoom-in:focus,
+        .leaflet-control-zoom-out:focus {
+          outline: 3px solid rgba(199,217,38,0.4);
+          outline-offset: 2px;
+        }
+
         .info.legend {
           padding: 10px 14px;
           background: #FBF9F4;
           border: 1px solid #E8E4DC;
           border-radius: 6px;
-          font-family: sans-serif;
+          font-family: 'Aileron', sans-serif;
           font-size: 13px;
-          line-height: 1.8;
+          line-height: 2.2;
           color: #2C3E50;
         }
-        .info.legend img { vertical-align: middle; margin-right: 6px; }
+        .info.legend img { vertical-align: middle; margin-right: 8px; }
+
+        #info-panel {
+          display: none;
+          position: absolute;
+          bottom: 30px;
+          left: 10px;
+          z-index: 1000;
+          background: #FBF9F4;
+          border: 1px solid #E8E4DC;
+          border-radius: 6px;
+          padding: 12px 16px;
+          width: 260px;
+          font-family: 'Aileron', sans-serif;
+          font-size: 14px;
+          line-height: 1.6;
+          color: #2C3E50;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+        #info-panel.visible { display: block; }
+        #info-panel .info-title {
+          font-weight: 600;
+          font-size: 15px;
+          margin-bottom: 6px;
+          padding-right: 20px;
+        }
+        #info-panel .info-body {
+          font-size: 13px;
+          color: #6B7B8D;
+          line-height: 1.5;
+        }
+        #info-panel .info-close {
+          position: absolute;
+          top: 8px;
+          right: 10px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 16px;
+          color: #6B7B8D;
+          line-height: 1;
+          padding: 0;
+        }
+        #info-panel .info-close:hover { color: #2C3E50; }
       </style>
       <div id="map"></div>
+      <div id="info-panel">
+        <button class="info-close">×</button>
+        <div class="info-title"></div>
+        <div class="info-body"></div>
+      </div>
     `;
   }
 
@@ -103,13 +199,18 @@ class KaraguaLeafletMap extends HTMLElement {
 
   _initMap() {
     const mapDiv = this.shadowRoot.getElementById("map");
-    this._map = L.map(mapDiv).setView([this._centerLat, this._centerLng], this._zoom);
-    this._map.scrollWheelZoom.disable();
+    this._map = L.map(mapDiv, { zoomControl: false }).setView(
+      [this._centerLat, this._centerLng],
+      this._zoom,
+    );
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap | Karaguá",
-      maxZoom: 18,
-    }).addTo(this._map);
+    L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        attribution: '© <a href="https://www.esri.com/">Esri</a> | Karaguá',
+        maxZoom: 19,
+      },
+    ).addTo(this._map);
 
     this._loadGeoJSONFiles();
     if (this._csvUrl) this._loadCSVData();
@@ -154,21 +255,38 @@ class KaraguaLeafletMap extends HTMLElement {
     });
   }
 
+  _parseCSVLine(line) {
+    const cols = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+      } else if (ch === "," && !inQuotes) {
+        cols.push(current.trim());
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    cols.push(current.trim());
+    return cols;
+  }
+
+  _parseCoord(val) {
+    const n = parseFloat((val || "").replace(",", "."));
+    if (isNaN(n)) return NaN;
+    // Corrige coordenadas com ponto decimal deslocado (ex: -263.717 → -26.3717)
+    if (Math.abs(n) > 90 && Math.abs(n) <= 900) return n / 10;
+    return n;
+  }
+
   _loadCSVData() {
-    const iconBase = { iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32] };
-    const monitoramentoIcon = L.icon({ iconUrl: "./images/icon/Monitoramento.png", ...iconBase });
-    const floraIcon = L.icon({
-      iconUrl: "./images/icon/Flora.png",
-      iconSize: [26, 26],
-      iconAnchor: [16, 32],
-      popupAnchor: [0, -32],
-    });
-    const faunaIcon = L.icon({
-      iconUrl: "./images/icon/Fauna.png",
-      iconSize: [26, 26],
-      iconAnchor: [16, 32],
-      popupAnchor: [0, -32],
-    });
+    const iconBase = { iconSize: [32, 40], iconAnchor: [16, 40] };
+    const monitoramentoIcon = L.icon({ iconUrl: "./images/icon/Monitoramento.svg", ...iconBase });
+    const floraIcon = L.icon({ iconUrl: "./images/icon/Flora.svg", ...iconBase });
+    const faunaIcon = L.icon({ iconUrl: "./images/icon/Fauna.svg", ...iconBase });
 
     fetch(this._csvUrl)
       .then((r) => r.text())
@@ -178,25 +296,60 @@ class KaraguaLeafletMap extends HTMLElement {
           .split("\n")
           .slice(1)
           .forEach((linha) => {
-            const col = linha.split(",");
+            const col = this._parseCSVLine(linha);
             if (col.length < 5) return;
-            const nome = col[0]?.trim();
-            const lat = parseFloat(col[1]?.replace(",", "."));
-            const lng = parseFloat(col[2]?.replace(",", "."));
-            const dados = col[3]?.trim();
-            const tipo = col[4]?.trim().toLowerCase();
+            const nome = col[0];
+            const lat = this._parseCoord(col[1]);
+            const lng = this._parseCoord(col[2]);
+            const dados = col[3];
+            const tipo = col[4].toLowerCase();
             let icon = monitoramentoIcon;
             if (tipo === "flora") icon = floraIcon;
             if (tipo === "fauna") icon = faunaIcon;
             if (!isNaN(lat) && !isNaN(lng)) {
-              const marker = L.marker([lat, lng], { icon })
-                .addTo(this._map)
-                .bindPopup(`<b>${nome}</b><br>${dados}`);
+              const marker = L.marker([lat, lng], { icon }).addTo(this._map);
+              marker.on("click", () => this._showInfo(nome, dados));
               this._markers.push(marker);
             }
           });
       })
       .catch((err) => console.error("Erro ao carregar CSV:", err));
+
+    const panel = this.shadowRoot.getElementById("info-panel");
+    panel.querySelector(".info-close").addEventListener("click", () => {
+      panel.classList.remove("visible");
+    });
+  }
+
+  _showInfo(titulo, corpo) {
+    const panel = this.shadowRoot.getElementById("info-panel");
+    panel.querySelector(".info-title").textContent = titulo;
+    panel.querySelector(".info-body").textContent = corpo;
+    panel.classList.add("visible");
+  }
+
+  _makeIcons() {
+    const iconBase = { iconSize: [32, 40], iconAnchor: [16, 40] };
+    return {
+      monitoramento: L.icon({ iconUrl: "./images/icon/Monitoramento.svg", ...iconBase }),
+      flora: L.icon({ iconUrl: "./images/icon/Flora.svg", ...iconBase }),
+      fauna: L.icon({ iconUrl: "./images/icon/Fauna.svg", ...iconBase }),
+    };
+  }
+
+  setPoints(points) {
+    this.clearMarkers();
+    const icons = this._makeIcons();
+    points.forEach((p) => {
+      const icon = icons[p.tipo] ?? icons.monitoramento;
+      const marker = L.marker([p.latitude, p.longitude], { icon }).addTo(this._map);
+      marker.on("click", () => this._showInfo(p.nome, p.dados));
+      this._markers.push(marker);
+    });
+  }
+
+  get mapReady() {
+    return !!this._map;
   }
 
   _addLegend() {
@@ -204,9 +357,9 @@ class KaraguaLeafletMap extends HTMLElement {
     legenda.onAdd = () => {
       const div = L.DomUtil.create("div", "info legend");
       div.innerHTML = `
-        <img src="./images/icon/Monitoramento.png" width="20"> Áreas de Monitoramento<br>
-        <img src="./images/icon/Flora.png" width="20"> Comunidade/APP<br>
-        <img src="./images/icon/Fauna.png" width="20"> Berçários da Fauna Local
+        <img src="./images/icon/Monitoramento.svg" width="20"> Áreas de Monitoramento<br>
+        <img src="./images/icon/Flora.svg" width="20"> Comunidade/APP<br>
+        <img src="./images/icon/Fauna.svg" width="20"> Berçários da Fauna Local
       `;
       return div;
     };

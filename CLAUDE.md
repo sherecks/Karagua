@@ -14,13 +14,13 @@ Este projeto roda sobre dois pilares que **mandam juntos**:
 
 ## O contrato — leia primeiro
 
-| Arquivo | Define |
-| --- | --- |
-| `Spec/PRD.md` | visão, problema, escopo das 8 seções, fases, métricas de sucesso |
+| Arquivo                            | Define                                                                                                                        |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `Spec/PRD.md`                      | visão, problema, escopo das 8 seções, fases, métricas de sucesso                                                              |
 | `Spec/01-design-system-blocado.md` | sistema **amplo e blocado**: grid full-bleed, primitivas (`BlockGrid`/`FullBleed`/`SceneScrub`), regra "sem container visual" |
-| `Spec/02-motion.md` | motion **sutil e com delay**, reveal sequencial (um conteúdo por vez), reduced-motion |
-| `Spec/03-copy.md` | enxugar copy, budget por seção, "cada número tem fonte", glossário, sem travessão |
-| `Spec/04-sections.md` | critério de aceite por seção + decisões pendentes (D1–D4) |
+| `Spec/02-motion.md`                | motion **sutil e com delay**, reveal sequencial (um conteúdo por vez), reduced-motion                                         |
+| `Spec/03-copy.md`                  | enxugar copy, budget por seção, "cada número tem fonte", glossário, sem travessão                                             |
+| `Spec/04-sections.md`              | critério de aceite por seção + decisões pendentes (D1–D4)                                                                     |
 
 > **Etapa #1 do PRD:** entregar **uma seção** (Hero) como prova de estilo e
 > aprová-la antes de propagar para o resto. Não redesenhar tudo de uma vez.
@@ -35,11 +35,11 @@ Este projeto roda sobre dois pilares que **mandam juntos**:
 
 ## Topologia (3 repos)
 
-| Repo | Papel |
-| --- | --- |
-| `Karagua/` (este) | o site: código, `src/style.css` (tokens), `Spec/` (contrato) |
-| `karagua-context/` | verdade de marca: `context/*.md`. **Toda copy e todo número saem daqui** |
-| `karagua-design-system/` | DS: `DESIGN.md`, `PRODUCT.md` (register=brand), contexto do gate |
+| Repo                     | Papel                                                                    |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `Karagua/` (este)        | o site: código, `src/style.css` (tokens), `Spec/` (contrato)             |
+| `karagua-context/`       | verdade de marca: `context/*.md`. **Toda copy e todo número saem daqui** |
+| `karagua-design-system/` | DS: `DESIGN.md`, `PRODUCT.md` (register=brand), contexto do gate         |
 
 > A skill `impeccable` mora na pasta global de skills (`~/.claude/skills/impeccable/`),
 > registrada como `/impeccable`. O `PRODUCT.md`/`DESIGN.md` do gate seguem no DS.

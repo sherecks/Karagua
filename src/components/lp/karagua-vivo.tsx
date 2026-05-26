@@ -3,9 +3,14 @@ import { Section, SectionHeader } from "@/components/lp/section";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
 
 const phases = [
-  { n: "01", phase: "Piloto", status: "Em andamento", title: "Balneário Barra do Sul, 380 ha" },
+  {
+    n: "01",
+    phase: "Piloto",
+    status: "Em andamento",
+    title: "Balneário Barra do Sul, 380 hectares",
+  },
   { n: "02", phase: "Manejo", status: "Sequencial", title: "Restauração ativa do manguezal" },
-  { n: "03", phase: "Escala", status: "3 anos", title: "Baía da Babitonga, até 8.000 ha" },
+  { n: "03", phase: "Escala", status: "3 anos", title: "Baía da Babitonga, até 8.000 hectares" },
   { n: "04", phase: "Plataforma", status: "Futura", title: "Plataforma digital pública" },
 ];
 

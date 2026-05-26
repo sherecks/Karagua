@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import "@/lib/karagua-leaflet-map.js";
-
-const CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQV5a1ea9CzLibmBwZH8ZlHOu9KX9Ui1__CEumXAkc-Olo4y8Jfxy1G9DqrYI1J-ZbKxrB_wXVOjTVB/pub?output=csv";
+import { supabase } from "@/lib/supabase";
 
 export function MapPage() {
+  const mapRef = useRef<HTMLElement>(null);
+
   useEffect(() => {
     document.title = "Mapa de Transparência · Karaguá";
     return () => {
@@ -13,30 +13,58 @@ export function MapPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const mapEl = mapRef.current;
+    if (!mapEl) return;
+
+    async function loadPoints() {
+      const { data, error } = await supabase
+        .from("pontos_interesse")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) {
+        console.error("Supabase:", error);
+        return;
+      }
+      if (data) (mapEl as any).setPoints(data);
+    }
+
+    // Se o mapa já inicializou (ex: navegando de volta), carrega direto
+    if ((mapEl as any).mapReady) {
+      void loadPoints();
+    } else {
+      mapEl.addEventListener("map-ready", loadPoints, { once: true });
+    }
+  }, []);
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
-      {/* Header */}
-      <header className="flex shrink-0 items-center justify-between px-8 py-4 bg-background/90 backdrop-blur-md border-b border-border">
+    <div className="relative h-screen overflow-hidden">
+      <header className="absolute top-0 inset-x-0 z-[1000] flex items-center justify-between px-10 py-4">
         <Link to="/" style={{ viewTransitionName: "brand-mark" }}>
-          <img src="/logo-1.svg" alt="Karaguá" className="h-12 w-auto" />
+          <img src="/logo-2.svg" alt="Karaguá" className="h-12 w-auto" />
         </Link>
         <div className="flex items-center gap-6">
-          <span className="text-label font-semibold tracking-[0.12em] uppercase text-k-ink-soft">
+          <span className="text-label font-semibold tracking-[0.12em] uppercase text-white">
             Mapa de Transparência
           </span>
-          <Link to="/" className="text-sm text-k-ink-soft transition-colors hover:text-k-ink">
+          <Link
+            to="/admin"
+            className="text-label uppercase font-semibold text-white px-3 py-1.5 rounded-md transition-colors"
+          >
+            Adicionar
+          </Link>
+          <Link to="/" className="text-sm text-white transition-colors hover:text-k-ink-soft">
             ← Voltar
           </Link>
         </div>
       </header>
 
-      {/* Mapa fullscreen */}
-      <div className="flex-1 overflow-hidden">
+      <div className="absolute inset-0">
         <karagua-leaflet-map
+          ref={mapRef}
           center-lat="-26.3900"
           center-lng="-48.6260"
           zoom="14"
-          csv-url={CSV_URL}
           style={{ display: "block", width: "100%", height: "100%" }}
         />
       </div>

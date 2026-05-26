@@ -22,6 +22,7 @@ import { Loader, LOADER_SESSION_TOTAL_MS } from "./components/loader";
 
 // Lazy: tira o Leaflet/MapPage do bundle inicial da home (achado P2 do audit).
 const MapPage = lazy(() => import("@/pages/MapPage").then((m) => ({ default: m.MapPage })));
+const AdminPage = lazy(() => import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 
 const iconTransition = { duration: 0.25, ease: EASE_OUT_QUART } as const;
 
@@ -123,6 +124,14 @@ export function App() {
           element={
             <Suspense fallback={null}>
               <MapPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <Suspense fallback={null}>
+              <AdminPage />
             </Suspense>
           }
         />
