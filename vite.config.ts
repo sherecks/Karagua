@@ -5,6 +5,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   preview: {
+    host: true,
     allowedHosts: ["lp-production-b2d5.up.railway.app"],
   },
   resolve: {
