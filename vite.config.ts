@@ -4,6 +4,9 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  preview: {
+    allowedHosts: ["lp-production-b2d5.up.railway.app"],
+  },
   resolve: {
     alias: {
       "@": new URL("./src", import.meta.url).pathname,
