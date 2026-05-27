@@ -1,4 +1,0 @@
-[deploy]
-startCommand = "bunx serve dist -s -l $PORT"
-healthcheckPath = "/"
-restartPolicyType = "on_failure"
