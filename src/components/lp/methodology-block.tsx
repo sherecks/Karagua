@@ -5,9 +5,9 @@ import { fadeUp, reveal, stagger } from "@/lib/motion";
 const LEGAL_IMG = `${import.meta.env.BASE_URL}images/image03.jpg`.replace(/\/+/g, "/");
 
 const legalItems = [
-  { title: "ProManguezal", ref: "Decreto nº 12.045/2024" },
+  { title: "Lei Rouanet", ref: "Lei 8.313/1991" },
   { title: "Mercado regulado de carbono", ref: "Lei nº 15.042/2024" },
-  { title: "PEPSA", ref: "Lei nº 15.133/2010 (SC)" },
+  { title: "Metodologias para registro do carbono", ref: "RCGI‑USP" },
   { title: "BNDES Fundo Clima", ref: "R$42,5 bi autorizados (2026)" },
   { title: "Metodologias Verra", ref: "VM0033 · VM0007" },
 ];

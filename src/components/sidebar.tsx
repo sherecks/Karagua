@@ -129,7 +129,7 @@ export function Sidebar({ onClose }: SidebarProps) {
             x: 10,
           }}
         >
-          contato@karagua.com.br
+          karaguaecotech@gmail.com
         </motion.span>
         <motion.span
           className="inline-block text-white mix-blend-difference"
@@ -139,7 +139,7 @@ export function Sidebar({ onClose }: SidebarProps) {
             x: 10,
           }}
         >
-          (47) 99999-9999
+          (47) 99692-3664
         </motion.span>
       </motion.div>
     </motion.div>

@@ -15,9 +15,9 @@ export function CtaFinal() {
           Contato
         </motion.p>
 
-        <h2 className="mt-10 max-w-[16ch] overflow-hidden text-[clamp(2.5rem,5vw,5rem)] leading-[1] font-thin text-k-ink">
+        <h2 className="mt-10 max-w-[24ch] overflow-hidden text-[clamp(2.5rem,5vw,5rem)] leading-[1] font-thin text-k-ink">
           <motion.span variants={fadeUp} className="block">
-            Pronto para transformar conservação em{" "}
+            Pronto para transformar preservação em{" "}
             <span className="font-bold text-k-bright">valor?</span>
           </motion.span>
         </h2>

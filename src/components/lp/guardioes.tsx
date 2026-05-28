@@ -5,13 +5,13 @@ import { fadeUp, reveal, stagger } from "@/lib/motion";
 import { SITE_EMAIL } from "@/lib/site";
 
 const benefits = [
-  "Alta integridade climática",
-  "Co-benefícios socioambientais",
-  "Alinhamento com metas ESG",
-  "Posicionamento de marca",
+  "Alta integridade climática.",
+  "Co-benefícios socioambientais.",
+  "Alinhamento com metas ESG.",
+  "Posicionamento de marca.",
 ];
 
-const SUBHEAD = "text-[clamp(1.5rem,2.8vw,2.25rem)] font-semibold leading-tight text-k-ink";
+const SUBHEAD = "text-[clamp(1.5rem,2.8vw,2.25rem)] font-data leading-tight text-k-ink-soft";
 
 export function Guardioes() {
   return (

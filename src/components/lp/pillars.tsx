@@ -12,8 +12,8 @@ const solutions = [
   {
     n: "02",
     label: "Comunidade",
-    title: "PSA: moradores e pescadores na cadeia produtiva",
-    tag: "Lei 15.133/2010 · PEPSA",
+    title: "Lei Rouanet -  Laboratório Vivo Karaguá",
+    tag: "Lei 8.313/1991",
   },
   {
     n: "03",

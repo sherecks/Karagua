@@ -11,8 +11,8 @@ const BIG_NUMBER = "text-[clamp(2.2rem,8vw,8rem)] leading-[0.85] text-white";
 const stats = [
   {
     display: "US$50B",
-    label: "essa é a projeção para o mercado brasileiro de carbono até 2030",
-    ariaLabel: "50 bilhões de dólares de mercado global de carbono até 2030",
+    label: "essa é a projeção para o mercado brasileiro de carbono até 2030.",
+    ariaLabel: "50 bilhões de dólares de mercado global de carbono até 2030.",
     sources: [
       {
         label: "McKinsey & Company, A blueprint for scaling voluntary carbon markets, 2021.",
@@ -21,9 +21,9 @@ const stats = [
     ],
   },
   {
-    display: "4.000",
-    label: "hectares é a meta de cobertura da Karaguá e 50% da Babitonga até 2036",
-    ariaLabel: "4 mil hectares de meta de cobertura e 50% da Babitonga até 2036",
+    display: "4.000ha",
+    label: "é a meta de cobertura da Karaguá é 50% da Baia da Babitonga até 2036.",
+    ariaLabel: "4 mil hectares de meta de cobertura e 50% da Babitonga até 2036.",
     sources: [{ label: "Karaguá Ecotech, plano estratégico de expansão territorial, 2026." }],
   },
 ];
@@ -49,7 +49,7 @@ export function CarbonoAzul() {
           className="absolute inset-0 h-full w-full object-cover select-none"
         />
         {/* Scrim para legibilidade do branco sobre a foto. */}
-        <div className="absolute inset-0 bg-gradient-to-br from-black/65 via-black/30 to-black/70" />
+        <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/30 to-black/90" />
 
         <motion.div
           {...reveal}

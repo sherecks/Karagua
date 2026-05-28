@@ -1,5 +1,5 @@
 const SocialLinks = [
-  { href: "https://www.instagram.com/karaguaecotech/", label: "Instagram" },
+  { href: "https://www.instagram.com/karagua.ecotech/", label: "Instagram" },
   { href: "https://www.linkedin.com/company/karaguaecotech/", label: "LinkedIn" },
   { href: "https://www.youtube.com/channel/UC_x9-_yOPPYH--iKbn97HPA", label: "YouTube" },
 ];
