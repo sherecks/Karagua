@@ -13,6 +13,7 @@ import { startViewTransition } from "@/lib/view-transition";
 import { MotionConfig } from "motion/react";
 
 import { Cursor } from "@/components/cursor";
+import { ProtectedRoute } from "@/components/protected-route";
 import { Sidebar } from "@/components/sidebar";
 import { Equal, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -23,6 +24,7 @@ import { Loader, LOADER_SESSION_TOTAL_MS } from "./components/loader";
 // Lazy: tira o Leaflet/MapPage do bundle inicial da home (achado P2 do audit).
 const MapPage = lazy(() => import("@/pages/MapPage").then((m) => ({ default: m.MapPage })));
 const AdminPage = lazy(() => import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })));
+const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 
 const iconTransition = { duration: 0.25, ease: EASE_OUT_QUART } as const;
 
@@ -128,11 +130,21 @@ export function App() {
           }
         />
         <Route
-          path="/admin"
+          path="/login"
           element={
             <Suspense fallback={null}>
-              <AdminPage />
+              <LoginPage />
             </Suspense>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={null}>
+                <AdminPage />
+              </Suspense>
+            </ProtectedRoute>
           }
         />
         <Route path="/v2" element={<PosAudit />} />

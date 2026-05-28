@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase, type PontoInteresse } from "@/lib/supabase";
 
 const TIPOS = ["monitoramento", "flora", "fauna"] as const;
@@ -29,6 +29,7 @@ type EditState = {
 };
 
 export function AdminPage() {
+  const navigate = useNavigate();
   const [pontos, setPontos] = useState<PontoInteresse[]>([]);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
@@ -141,6 +142,15 @@ export function AdminPage() {
           <Link to="/mapa" className="text-sm text-k-ink-soft hover:text-k-ink transition-colors">
             Ver mapa →
           </Link>
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              void navigate("/login");
+            }}
+            className="text-sm text-k-ink-soft hover:text-k-coral transition-colors"
+          >
+            Sair
+          </button>
         </div>
       </header>
 
