@@ -23,7 +23,7 @@ export function Footer() {
   return (
     <footer className="surface-primary">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-12">
-        <div className="flex flex-row col-span-4 justify-between">
+        <div className="flex flex-col gap-10 md:flex-row md:justify-between">
           <div className="flex flex-col gap-2 items-start">
             <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12 mb-4 brightness-0" />
             <span className="text-xs text-foreground/70">65.981.337/0001-72</span>
@@ -33,57 +33,50 @@ export function Footer() {
             <span className="text-xs text-foreground/70">JOINVILLE - SC · CEP 89203-020</span>
           </div>
 
-          <nav className="flex flex-col gap-2">
-            <span
-              className="text-xs tracking-widest
- text-foreground/70 font-bold uppercase mb-2"
-            >
-              Sobre
-            </span>
-            {AboutLinks.map((l) => (
-              <a
-                key={l.href}
-                href={l.href}
-                className="text-data text-foreground/70 transition-colors hover:text-foreground"
-              >
-                {l.label}
-              </a>
-            ))}
-          </nav>
-          <nav className="flex flex-col gap-2">
-            <span
-              className="text-xs tracking-widest
- text-foreground/70 font-bold uppercase mb-2"
-            >
-              Social
-            </span>
-            {SocialLinks.map((l) => (
-              <a
-                key={l.href}
-                href={l.href}
-                className="text-data text-foreground/70 transition-colors hover:text-foreground"
-              >
-                {l.label}
-              </a>
-            ))}
-          </nav>
-          <nav className="flex flex-col gap-2">
-            <span
-              className="text-xs tracking-widest
- text-foreground/70 font-bold uppercase mb-2"
-            >
-              Legal
-            </span>
-            {LegalLinks.map((l) => (
-              <a
-                key={l.href}
-                href={l.href}
-                className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-              >
-                {l.label}
-              </a>
-            ))}
-          </nav>
+          <div className="grid grid-cols-2 gap-x-10 gap-y-8 sm:flex sm:gap-16">
+            <nav className="flex flex-col gap-2">
+              <span className="text-xs tracking-widest text-foreground/70 font-bold uppercase mb-2">
+                Sobre
+              </span>
+              {AboutLinks.map((l) => (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  className="text-data text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+            <nav className="flex flex-col gap-2">
+              <span className="text-xs tracking-widest text-foreground/70 font-bold uppercase mb-2">
+                Social
+              </span>
+              {SocialLinks.map((l) => (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  className="text-data text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+            <nav className="flex flex-col gap-2">
+              <span className="text-xs tracking-widest text-foreground/70 font-bold uppercase mb-2">
+                Legal
+              </span>
+              {LegalLinks.map((l) => (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+          </div>
         </div>
         <div className="flex flex-col text-center justify-center items-center gap-2 border-t border-border pt-6 text-data text-foreground/55">
           <p className="text-xs">

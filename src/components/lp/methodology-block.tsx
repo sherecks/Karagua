@@ -2,7 +2,7 @@ import { motion } from "motion/react";
 import { SectionHeader } from "@/components/lp/section";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
 
-const LEGAL_IMG = `${import.meta.env.BASE_URL}images/image03.jpg`.replace(/\/+/g, "/");
+const LEGAL_IMG = `${import.meta.env.BASE_URL}images/img2.jpg`.replace(/\/+/g, "/");
 
 const legalItems = [
   { title: "Lei Rouanet", ref: "Lei 8.313/1991" },
@@ -12,7 +12,7 @@ const legalItems = [
   { title: "Metodologias Verra", ref: "VM0033 · VM0007" },
 ];
 
-const SUBHEAD = "text-[clamp(1.5rem,2.6vw,2.125rem)] font-semibold leading-tight text-k-ink";
+const SUBHEAD = "text-[clamp(1.25rem,2.6vw,2.125rem)] font-semibold leading-tight text-k-ink";
 
 // Section custom (sem o primitivo Section): o padding vive só na coluna de
 // texto; a imagem sangra a altura inteira da seção e encosta na borda direita.
@@ -20,7 +20,7 @@ export function MethodologyBlock() {
   return (
     <section id="legal" className="bg-k-fog">
       <div className="grid lg:grid-cols-[1fr_38%] lg:items-stretch">
-        <div className="flex flex-col justify-center gap-12 px-6 py-24 md:px-10 md:py-28 lg:pl-16 lg:pr-16">
+        <div className="flex flex-col justify-center gap-10 px-4 py-12 md:gap-12 md:px-10 md:py-24 lg:pl-16 lg:pr-16 lg:py-28">
           <SectionHeader
             eyebrow="Base legal e institucional"
             title={
@@ -44,7 +44,7 @@ export function MethodologyBlock() {
           </motion.ul>
         </div>
 
-        <div className="relative min-h-[50vh] overflow-hidden lg:min-h-full">
+        <div className="relative min-h-[40vh] overflow-hidden md:min-h-[50vh] lg:min-h-full">
           <img
             src={LEGAL_IMG}
             alt=""

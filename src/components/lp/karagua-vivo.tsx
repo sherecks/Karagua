@@ -14,7 +14,7 @@ const phases = [
   { n: "04", phase: "Plataforma", status: "Futura", title: "Plataforma digital pública" },
 ];
 
-const SUBHEAD = "text-[clamp(1.5rem,2.8vw,2.25rem)] font-semibold leading-tight text-k-ink";
+const SUBHEAD = "text-[clamp(1.25rem,2.8vw,2.25rem)] font-semibold leading-tight text-k-ink";
 
 export function KaraguaVivo() {
   return (
@@ -29,7 +29,11 @@ export function KaraguaVivo() {
       />
 
       {/* Tabela borderless: colunas fixas alinham entre as linhas. */}
-      <motion.ol {...reveal} variants={stagger} className="mt-20 flex flex-col gap-9">
+      <motion.ol
+        {...reveal}
+        variants={stagger}
+        className="mt-10 flex flex-col gap-6 md:mt-20 md:gap-9"
+      >
         {phases.map((p) => (
           <motion.li
             key={p.n}

@@ -266,6 +266,27 @@ class KaraguaLeafletMap extends HTMLElement {
           padding: 0;
         }
         #info-panel .info-close:hover { color: #2C3E50; }
+
+        @media (max-width: 480px) {
+          #panel-toggle {
+            top: 68px;
+            right: 12px;
+          }
+          #side-panel {
+            top: 68px;
+            right: 62px;
+            width: min(220px, calc(100vw - 80px));
+          }
+          #points-scroll {
+            max-height: 140px;
+          }
+          #info-panel {
+            left: 12px;
+            right: 12px;
+            width: auto;
+            bottom: 24px;
+          }
+        }
       </style>
       <div id="map"></div>
       <button id="panel-toggle" aria-label="Abrir painel">

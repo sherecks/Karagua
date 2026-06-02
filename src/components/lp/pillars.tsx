@@ -23,7 +23,7 @@ const solutions = [
   },
 ];
 
-const SUBHEAD = "text-[clamp(1.5rem,2.6vw,2.125rem)] font-semibold leading-tight text-k-ink";
+const SUBHEAD = "text-[clamp(1.25rem,2.6vw,2.125rem)] font-semibold leading-tight text-k-ink";
 
 export function Pillars() {
   return (
@@ -36,7 +36,7 @@ export function Pillars() {
       <motion.div
         {...reveal}
         variants={stagger}
-        className="mt-20 grid gap-x-16 gap-y-14 md:grid-cols-3"
+        className="mt-10 grid gap-y-10 sm:grid-cols-2 sm:gap-x-10 md:mt-20 md:grid-cols-3 md:gap-x-16 md:gap-y-14"
       >
         {solutions.map((s) => (
           <motion.div key={s.title} variants={fadeUp} className="flex flex-col gap-4">

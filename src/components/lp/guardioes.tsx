@@ -11,7 +11,7 @@ const benefits = [
   "Posicionamento de marca.",
 ];
 
-const SUBHEAD = "text-[clamp(1.5rem,2.8vw,2.25rem)] font-data leading-tight text-k-ink-soft";
+const SUBHEAD = "text-[clamp(1.25rem,2.8vw,2.25rem)] font-data leading-tight text-k-ink-soft";
 
 export function Guardioes() {
   return (
@@ -21,7 +21,7 @@ export function Guardioes() {
       <motion.ul
         {...reveal}
         variants={stagger}
-        className="mt-20 grid gap-x-16 gap-y-12 sm:grid-cols-2"
+        className="mt-10 grid gap-y-8 sm:grid-cols-2 sm:gap-x-10 md:mt-20 md:gap-x-16 md:gap-y-12"
       >
         {benefits.map((b) => (
           <motion.li key={b} variants={fadeUp}>

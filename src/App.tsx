@@ -46,7 +46,7 @@ function LandingPage() {
 
         <nav
           aria-label="Navegação principal"
-          className="flex mx-auto flex-row items-center px-8 py-4 justify-between sticky w-full z-100"
+          className="flex mx-auto flex-row items-center px-4 py-4 justify-between sticky w-full z-100 md:px-8"
         >
           <a href="#topo" style={{ viewTransitionName: "brand-mark" }}>
             <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12" />

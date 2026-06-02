@@ -3,7 +3,7 @@ import { DataPoint } from "@/components/lp/data-point";
 import { SectionHeader } from "@/components/lp/section";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
 
-const PROB_IMG = `${import.meta.env.BASE_URL}images/image05.png`.replace(/\/+/g, "/");
+const PROB_IMG = `${import.meta.env.BASE_URL}images/img3.jpg`.replace(/\/+/g, "/");
 
 const STAT_NUM = "text-[clamp(1.75rem,3vw,3rem)] leading-[0.95]";
 
@@ -11,13 +11,13 @@ const STAT_NUM = "text-[clamp(1.75rem,3vw,3rem)] leading-[0.95]";
 const stats = [
   {
     display: "8.000",
-    label: "ha de potencial na Babitonga",
+    label: "hectares de potencial na Babitonga",
     ariaLabel: "8 mil hectares de potencial na Baía da Babitonga",
     sources: [{ label: "Karaguá Ecotech, plano de expansão territorial (estimativa interna)." }],
   },
   {
     display: "R$1,2M",
-    label: "receita anual estimada em créditos",
+    label: "de receita anual estimada em créditos",
     ariaLabel: "1,2 milhão de reais por ano de receita estimada em créditos de carbono",
     sources: [
       { label: "Karaguá Ecotech, projeção de receita do business plan (estimativa interna)." },
@@ -25,7 +25,7 @@ const stats = [
   },
   {
     display: "380",
-    label: "ha no piloto, Balneário Barra do Sul",
+    label: "hectares no projeto piloto, Balneário Barra do Sul",
     ariaLabel: "380 hectares no projeto piloto em Balneário Barra do Sul",
     sources: [{ label: "Karaguá Ecotech, plano do projeto piloto (estimativa interna)." }],
   },
@@ -49,7 +49,7 @@ const aside = [
   { n: "04", title: "Mercado com demanda crescente" },
 ];
 
-const SUBHEAD = "text-[clamp(1.5rem,2.8vw,2.25rem)] font-semibold leading-tight";
+const SUBHEAD = "text-[clamp(1.25rem,2.8vw,2.25rem)] font-semibold leading-tight";
 
 // Split full-height: foto à esquerda (altura inteira, sem padding) + 01/02 em
 // invert; coluna lima à direita com heading, 03/04 e os dados.
@@ -57,7 +57,7 @@ export function Problema() {
   return (
     <section id="problema" className="grid min-h-screen lg:grid-cols-2">
       {/* Esquerda — foto altura inteira, sem padding */}
-      <div className="relative min-h-[60vh] overflow-hidden lg:min-h-screen">
+      <div className="relative min-h-[45vh] overflow-hidden md:min-h-[60vh] lg:min-h-screen">
         <img
           src={PROB_IMG}
           alt=""
@@ -71,7 +71,7 @@ export function Problema() {
           aria-hidden
           className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/40 to-black/10"
         />
-        <div className="relative flex h-full flex-col justify-center gap-14 p-8 md:p-12 lg:p-16">
+        <div className="relative flex h-full flex-col justify-center gap-8 p-4 md:gap-14 md:p-12 lg:p-16">
           {overImage.map((p) => (
             <div key={p.n} className="flex items-baseline gap-5 text-white">
               <span className="font-mono text-data">{p.n}</span>
@@ -82,7 +82,7 @@ export function Problema() {
       </div>
 
       {/* Direita — fundo lima */}
-      <div className="surface-primary flex flex-col justify-between gap-16 px-6 py-20 md:px-10 md:py-24 lg:px-16">
+      <div className="surface-primary flex flex-col justify-between gap-10 px-4 py-10 md:gap-16 md:px-10 md:py-24 lg:px-16">
         <div>
           <SectionHeader
             eyebrow="O problema"
@@ -98,7 +98,11 @@ export function Problema() {
           </motion.div>
         </div>
 
-        <motion.div {...reveal} variants={stagger} className="grid grid-cols-2 gap-x-10 gap-y-8">
+        <motion.div
+          {...reveal}
+          variants={stagger}
+          className="grid grid-cols-1 gap-y-8 sm:grid-cols-2 sm:gap-x-10"
+        >
           {stats.map((s) => (
             <motion.div key={s.label} variants={fadeUp}>
               <DataPoint

@@ -9,7 +9,7 @@ export function Hero() {
   return (
     <section
       id="topo"
-      className="relative flex min-h-screen w-full flex-col justify-center px-6 pt-28 pb-20 md:px-10 lg:px-16 lg:pt-32"
+      className="relative flex min-h-screen w-full flex-col justify-center px-4 pt-20 pb-16 md:px-10 md:pt-28 lg:px-16 lg:pt-32"
     >
       <motion.div
         variants={stagger}

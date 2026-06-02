@@ -3,7 +3,7 @@ import { DataPoint } from "@/components/lp/data-point";
 import { SectionHeader } from "@/components/lp/section";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
 
-const IMP_IMG = `${import.meta.env.BASE_URL}images/image01.png`.replace(/\/+/g, "/");
+const IMP_IMG = `${import.meta.env.BASE_URL}images/img1.jpg`.replace(/\/+/g, "/");
 
 // Big number gigante e branco (override do text-k-deep do DataPoint via twMerge).
 const BIG_NUMBER = "text-[clamp(2.2rem,8vw,8rem)] leading-[0.85] text-white";
@@ -54,7 +54,7 @@ export function CarbonoAzul() {
         <motion.div
           {...reveal}
           variants={stagger}
-          className="relative mx-auto flex h-full min-h-[64vh] w-full max-w-[120rem] flex-col justify-between gap-12 px-8 py-16 md:px-10 md:py-20 lg:px-16"
+          className="relative mx-auto flex h-full min-h-[80vh] w-full max-w-[120rem] flex-col justify-between gap-8 px-4 py-10 md:min-h-[64vh] md:gap-12 md:px-10 md:py-20 lg:px-16"
         >
           <motion.div variants={fadeUp} className="max-w-[42ch]">
             <DataPoint

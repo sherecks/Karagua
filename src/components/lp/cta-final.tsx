@@ -15,14 +15,17 @@ export function CtaFinal() {
           Contato
         </motion.p>
 
-        <h2 className="mt-10 max-w-[24ch] overflow-hidden text-[clamp(2.5rem,5vw,5rem)] leading-[1] font-thin text-k-ink">
+        <h2 className="mt-6 max-w-[24ch] overflow-hidden text-[clamp(2rem,5vw,5rem)] leading-[1] font-thin text-k-ink md:mt-10">
           <motion.span variants={fadeUp} className="block">
             Pronto para transformar preservação em{" "}
             <span className="font-bold text-k-bright">valor?</span>
           </motion.span>
         </h2>
 
-        <motion.div variants={fadeUp} className="mt-12 flex flex-wrap items-center gap-4">
+        <motion.div
+          variants={fadeUp}
+          className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 md:mt-12"
+        >
           <Button asChild size="lg">
             <a href={`mailto:${SITE_EMAIL}?subject=Contato%20Karagu%C3%A1%20Ecotech`}>
               Entrar em contato

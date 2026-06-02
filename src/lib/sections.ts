@@ -5,7 +5,6 @@ export type NavSection = {
 
 /** Single source of truth for in-page navigation (ScrollRail + Sidebar). */
 export const NAV_SECTIONS: NavSection[] = [
-  { id: "topo", label: "Início" },
   { id: "problema", label: "Problema" },
   { id: "solucao", label: "Solução" },
   { id: "impacto", label: "Impacto" },

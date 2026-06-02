@@ -39,21 +39,24 @@ export function MapPage() {
 
   return (
     <div className="relative h-screen overflow-hidden">
-      <header className="absolute top-0 inset-x-0 z-[1000] flex items-center justify-between px-10 py-4">
+      <header className="absolute top-0 inset-x-0 z-[1000] flex items-center justify-between px-4 py-3 md:px-10 md:py-4">
         <Link to="/" style={{ viewTransitionName: "brand-mark" }}>
-          <img src="/logo-2.svg" alt="Karaguá" className="h-12 w-auto" />
+          <img src="/logo-2.svg" alt="Karaguá" className="h-10 w-auto md:h-12" />
         </Link>
-        <div className="flex items-center gap-6">
-          <span className="text-label font-semibold tracking-[0.12em] uppercase text-white">
+        <div className="flex items-center gap-3 md:gap-6">
+          <span className="hidden md:inline text-label font-semibold tracking-[0.12em] uppercase text-white">
             Mapa de Transparência
           </span>
           <Link
             to="/admin"
-            className="text-label uppercase font-semibold text-white px-3 py-1.5 rounded-md transition-colors"
+            className="text-label uppercase font-semibold text-white px-3 py-2 rounded-md transition-colors min-h-[44px] inline-flex items-center"
           >
             Adicionar
           </Link>
-          <Link to="/" className="text-sm text-white transition-colors hover:text-k-ink-soft">
+          <Link
+            to="/"
+            className="text-sm text-white transition-colors hover:text-k-ink-soft px-2 py-2 min-h-[44px] inline-flex items-center"
+          >
             ← Voltar
           </Link>
         </div>
