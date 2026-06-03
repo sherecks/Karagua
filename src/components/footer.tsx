@@ -11,13 +11,6 @@ const AboutLinks = [
   { href: "#empresas", label: "Para empresas" },
 ];
 
-const LegalLinks = [
-  { href: "#politica-de-privacidade", label: "Política de privacidade" },
-  { href: "#termos-de-uso", label: "Termos de uso" },
-  { href: "#politica-de-cookies", label: "Política de cookies" },
-  { href: "#politica-de-protecao-de-dados", label: "Política de proteção de dados" },
-];
-
 /** Footer — carbon surface, restrained. Brand mark in bright on dark. */
 export function Footer() {
   return (
@@ -27,10 +20,7 @@ export function Footer() {
           <div className="flex flex-col gap-2 items-start">
             <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12 mb-4 brightness-0" />
             <span className="text-xs text-foreground/70">65.981.337/0001-72</span>
-            <span className="text-xs text-foreground/70">
-              RUA BORBA GATO 700, APT 1103 A · ATIRADORES
-            </span>
-            <span className="text-xs text-foreground/70">JOINVILLE - SC · CEP 89203-020</span>
+            <span className="text-xs text-foreground/70">JOINVILLE - SC</span>
           </div>
 
           <div className="grid grid-cols-2 gap-x-10 gap-y-8 sm:flex sm:gap-16">
@@ -57,20 +47,6 @@ export function Footer() {
                   key={l.href}
                   href={l.href}
                   className="text-data text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  {l.label}
-                </a>
-              ))}
-            </nav>
-            <nav className="flex flex-col gap-2">
-              <span className="text-xs tracking-widest text-foreground/70 font-bold uppercase mb-2">
-                Legal
-              </span>
-              {LegalLinks.map((l) => (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
                 >
                   {l.label}
                 </a>
