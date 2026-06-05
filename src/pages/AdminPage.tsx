@@ -131,15 +131,18 @@ export function AdminPage() {
 
   return (
     <div className="min-h-screen bg-k-shell">
-      <header className="flex items-center justify-between px-8 py-4 border-b border-border bg-background">
+      <header className="flex items-center justify-between px-4 py-4 border-b border-border bg-background md:px-8">
         <Link to="/" style={{ viewTransitionName: "brand-mark" }}>
           <img src="/logo-1.svg" alt="Karaguá" className="h-10 w-auto" />
         </Link>
-        <div className="flex items-center gap-6">
-          <span className="text-label font-semibold tracking-[0.12em] uppercase text-k-ink-soft">
+        <div className="flex items-center gap-3 md:gap-6">
+          <span className="hidden md:inline text-label font-semibold tracking-[0.12em] uppercase text-k-ink-soft">
             Admin · Pontos de Interesse
           </span>
-          <Link to="/mapa" className="text-sm text-k-ink-soft hover:text-k-ink transition-colors">
+          <Link
+            to="/mapa"
+            className="text-sm text-k-ink-soft hover:text-k-ink transition-colors py-2 px-1 min-h-[44px] inline-flex items-center"
+          >
             Ver mapa →
           </Link>
           <button
@@ -147,7 +150,7 @@ export function AdminPage() {
               await supabase.auth.signOut();
               void navigate("/login");
             }}
-            className="text-sm text-k-ink-soft hover:text-k-coral transition-colors"
+            className="text-sm text-k-ink-soft hover:text-k-coral transition-colors py-2 px-1 min-h-[44px] inline-flex items-center"
           >
             Sair
           </button>
