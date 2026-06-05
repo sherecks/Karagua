@@ -11,13 +11,13 @@ const STAT_NUM = "text-[clamp(1.75rem,3vw,3rem)] leading-[0.95]";
 const stats = [
   {
     display: "8.000",
-    label: "hectares de potencial na Babitonga",
+    label: "hectares de potencial na Baía da Babitonga",
     ariaLabel: "8 mil hectares de potencial na Baía da Babitonga",
     sources: [{ label: "Karaguá Ecotech, plano de expansão territorial (estimativa interna)." }],
   },
   {
     display: "R$1,2M",
-    label: "de receita anual estimada em créditos",
+    label: "de receita anual estimada em créditos de carbono",
     ariaLabel: "1,2 milhão de reais por ano de receita estimada em créditos de carbono",
     sources: [
       { label: "Karaguá Ecotech, projeção de receita do business plan (estimativa interna)." },
@@ -25,13 +25,13 @@ const stats = [
   },
   {
     display: "380",
-    label: "hectares no projeto piloto, Balneário Barra do Sul",
+    label: "hectares no projeto piloto em Balneário Barra do Sul",
     ariaLabel: "380 hectares no projeto piloto em Balneário Barra do Sul",
     sources: [{ label: "Karaguá Ecotech, plano do projeto piloto (estimativa interna)." }],
   },
   {
-    display: "400+",
-    label: "famílias impactadas até 2035",
+    display: "+400",
+    label: "famílias impactadas pelo projeto até 2035",
     ariaLabel: "mais de 400 famílias impactadas até 2035",
     sources: [
       { label: "Karaguá Ecotech, projeção de impacto socioambiental (estimativa interna)." },

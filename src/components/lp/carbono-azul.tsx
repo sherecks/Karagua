@@ -22,8 +22,8 @@ const stats = [
   },
   {
     display: "4.000ha",
-    label: "é a meta de cobertura da Karaguá é 50% da Baia da Babitonga até 2036.",
-    ariaLabel: "4 mil hectares de meta de cobertura e 50% da Babitonga até 2036.",
+    label: "é a meta de cobertura da Karaguá na Baía da Babitonga até 2036.",
+    ariaLabel: "4 mil hectares é a meta de cobertura na Babitonga até 2036.",
     sources: [{ label: "Karaguá Ecotech, plano estratégico de expansão territorial, 2026." }],
   },
 ];
