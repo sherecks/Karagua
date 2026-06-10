@@ -1,7 +1,6 @@
 import { Footer } from "@/components/footer";
 import { CarbonoAzul } from "@/components/lp/carbono-azul";
 import { CtaFinal } from "@/components/lp/cta-final";
-import { Guardioes } from "@/components/lp/guardioes";
 import { Hero } from "@/components/lp/hero";
 import { KaraguaVivo } from "@/components/lp/karagua-vivo";
 import { MethodologyBlock } from "@/components/lp/methodology-block";
@@ -98,7 +97,6 @@ function LandingPage() {
           <Pillars />
           <MethodologyBlock />
           <CarbonoAzul />
-          <Guardioes />
           <CtaFinal />
         </main>
         <Footer />

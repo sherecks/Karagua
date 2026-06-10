@@ -12,7 +12,7 @@ const solutions = [
   {
     n: "02",
     label: "Comunidade",
-    title: "Lei Rouanet -  Laboratório Vivo Karaguá",
+    title: "Tornar a tecnologia acessível a todos",
     tag: "Lei 8.313/1991",
   },
   {

@@ -10,7 +10,7 @@ const phases = [
     title: "Balneário Barra do Sul, 380 hectares",
   },
   { n: "02", phase: "Manejo", status: "Sequencial", title: "Proteção ativa do manguezal" },
-  { n: "03", phase: "Escala", status: "8 anos", title: "Baía da Babitonga, até 8.000 hectares" },
+  { n: "03", phase: "Escala", status: "Estadual", title: "Baía da Babitonga, até 8.000 hectares" },
   { n: "04", phase: "Tecnologia", status: "Futura", title: "Quantificação do carbono com LiDAR" },
 ];
 
