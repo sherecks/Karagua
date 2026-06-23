@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pixel Beam — Karaguá</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #0d732b;
+        height: 100%;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      const BG_COLOR = "#0d732b";
+      const DOT_COLOR = "#d3e628";
+
+      const CELL_SIZE = 6;
+      const MOUSE_RADIUS = 40; // px, raio de influência do cursor sobre a logo
+      const REVEAL_SPEED = 0.35; // velocidade com que a logo "fixa" ao passar o mouse
+
+      const PARTICLE_COUNT = 70;
+      const RISE_SPEED_MIN = 0.35;
+      const RISE_SPEED_MAX = 0.85;
+      const ABSORB_SHRINK = 0.86; // fator de encolhimento por frame dentro da logo
+      const PARTICLE_REVEAL_SPEED = 0.05; // quanto cada partícula absorvida "deposita" na logo
+
+      let cols = 0;
+      let rows = 0;
+      let logoIsCell = new Uint8Array(0); // 1 = célula pertence à logo (não anima)
+      let logoAlpha = new Float32Array(0); // cobertura 0..1 amostrada da logo
+      let logoRevealed = new Float32Array(0); // 0..1, fica permanente ao passar o mouse
+
+      const mouse = { x: -9999, y: -9999, active: false };
+      window.addEventListener("mousemove", (e) => {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+        mouse.active = true;
+      });
+      window.addEventListener("mouseleave", () => (mouse.active = false));
+
+      const logoImg = new Image();
+      let logoReady = false;
+      logoImg.onload = () => {
+        logoReady = true;
+        buildGrid();
+      };
+      logoImg.src = "/logo-2.svg";
+
+      function sampleLogoMask(logoBox) {
+        const sampleScale = 2;
+        const offW = Math.round(logoBox.w * sampleScale);
+        const offH = Math.round(logoBox.h * sampleScale);
+        const off = document.createElement("canvas");
+        off.width = offW;
+        off.height = offH;
+        const offCtx = off.getContext("2d");
+        offCtx.drawImage(logoImg, 0, 0, offW, offH);
+        return { data: offCtx.getImageData(0, 0, offW, offH).data, w: offW, h: offH };
+      }
+
+      function buildGrid() {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        cols = Math.ceil(vw / CELL_SIZE);
+        rows = Math.ceil(vh / CELL_SIZE);
+        const total = cols * rows;
+
+        const logoW = Math.min(vw * 0.86, 1400);
+        const logoH = logoW * (162 / 494);
+        const logoBox = {
+          x: (vw - logoW) / 2,
+          y: (vh - logoH) / 2,
+          w: logoW,
+          h: logoH,
+        };
+        const mask = logoReady ? sampleLogoMask(logoBox) : null;
+
+        logoIsCell = new Uint8Array(total);
+        logoAlpha = new Float32Array(total);
+        logoRevealed = new Float32Array(total);
+
+        for (let yi = 0; yi < rows; yi++) {
+          for (let xi = 0; xi < cols; xi++) {
+            const idx = yi * cols + xi;
+            const cx = xi * CELL_SIZE + CELL_SIZE / 2;
+            const cy = yi * CELL_SIZE + CELL_SIZE / 2;
+
+            if (
+              mask &&
+              cx >= logoBox.x &&
+              cx <= logoBox.x + logoBox.w &&
+              cy >= logoBox.y &&
+              cy <= logoBox.y + logoBox.h
+            ) {
+              const sx = Math.floor(((cx - logoBox.x) / logoBox.w) * mask.w);
+              const sy = Math.floor(((cy - logoBox.y) / logoBox.h) * mask.h);
+              const a = mask.data[(sy * mask.w + sx) * 4 + 3] ?? 0;
+              if (a > 28) {
+                logoIsCell[idx] = 1;
+                logoAlpha[idx] = a / 255;
+              }
+            }
+          }
+        }
+      }
+
+      // Mouse "fixa" a logo nas células próximas, permanentemente.
+      function applyMouseReveal() {
+        if (!mouse.active || cols === 0) return;
+        const cellRadius = Math.ceil(MOUSE_RADIUS / CELL_SIZE);
+        const mx = Math.floor(mouse.x / CELL_SIZE);
+        const my = Math.floor(mouse.y / CELL_SIZE);
+
+        for (let dy = -cellRadius; dy <= cellRadius; dy++) {
+          for (let dx = -cellRadius; dx <= cellRadius; dx++) {
+            const xi = mx + dx;
+            const yi = my + dy;
+            if (xi < 0 || xi >= cols || yi < 0 || yi >= rows) continue;
+
+            const dist = Math.hypot(dx * CELL_SIZE, dy * CELL_SIZE);
+            if (dist > MOUSE_RADIUS) continue;
+
+            const idx = yi * cols + xi;
+            if (!logoIsCell[idx]) continue;
+
+            const proximity = 1 - dist / MOUSE_RADIUS;
+            logoRevealed[idx] = Math.min(1, logoRevealed[idx] + proximity * REVEAL_SPEED);
+          }
+        }
+      }
+
+      // Partículas: sobem como bolhas de oxigênio e são "absorvidas" ao entrar na logo.
+      let particles = [];
+
+      function spawnParticle(p) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        p = p || {};
+        p.x = Math.random() * vw;
+        p.y = vh + Math.random() * 60;
+        p.vy = -(RISE_SPEED_MIN + Math.random() * (RISE_SPEED_MAX - RISE_SPEED_MIN));
+        p.phase = Math.random() * Math.PI * 2;
+        p.size = 2.5 + Math.random() * 2.5;
+        return p;
+      }
+
+      function initParticles() {
+        particles = [];
+        for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(spawnParticle());
+      }
+
+      function updateParticles() {
+        for (const p of particles) {
+          p.phase += 0.02;
+          p.x += Math.sin(p.phase) * 0.4;
+          p.y += p.vy;
+
+          const xi = Math.floor(p.x / CELL_SIZE);
+          const yi = Math.floor(p.y / CELL_SIZE);
+          const idx = xi >= 0 && xi < cols && yi >= 0 && yi < rows ? yi * cols + xi : -1;
+          const insideLogo = idx >= 0 && logoIsCell[idx];
+
+          if (insideLogo) {
+            logoRevealed[idx] = Math.min(1, logoRevealed[idx] + PARTICLE_REVEAL_SPEED);
+            p.size *= ABSORB_SHRINK;
+          }
+
+          if (p.y < -20 || p.size < 0.5) spawnParticle(p);
+        }
+      }
+
+      // Partículas soltas pelo mouse: nascem no cursor, somem ao chegar no topo (não renascem).
+      const MOUSE_EMIT_CHANCE = 0.6;
+      const MOUSE_PARTICLE_CAP = 180;
+      let mouseParticles = [];
+
+      function emitMouseParticles() {
+        if (!mouse.active) return;
+        if (mouseParticles.length >= MOUSE_PARTICLE_CAP) return;
+        if (Math.random() > MOUSE_EMIT_CHANCE) return;
+        mouseParticles.push({
+          x: mouse.x + (Math.random() - 0.5) * 12,
+          y: mouse.y + (Math.random() - 0.5) * 12,
+          vy: -(RISE_SPEED_MIN + Math.random() * (RISE_SPEED_MAX - RISE_SPEED_MIN)),
+          phase: Math.random() * Math.PI * 2,
+          size: 2.5 + Math.random() * 2.5,
+        });
+      }
+
+      function updateMouseParticles() {
+        for (let i = mouseParticles.length - 1; i >= 0; i--) {
+          const p = mouseParticles[i];
+          p.phase += 0.02;
+          p.x += Math.sin(p.phase) * 0.4;
+          p.y += p.vy;
+
+          const xi = Math.floor(p.x / CELL_SIZE);
+          const yi = Math.floor(p.y / CELL_SIZE);
+          const idx = xi >= 0 && xi < cols && yi >= 0 && yi < rows ? yi * cols + xi : -1;
+          const insideLogo = idx >= 0 && logoIsCell[idx];
+
+          if (insideLogo) {
+            logoRevealed[idx] = Math.min(1, logoRevealed[idx] + PARTICLE_REVEAL_SPEED);
+            p.size *= ABSORB_SHRINK;
+          }
+
+          if (p.y < -20 || p.size < 0.5) mouseParticles.splice(i, 1);
+        }
+      }
+
+      function resize() {
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+        canvas.style.width = window.innerWidth + "px";
+        canvas.style.height = window.innerHeight + "px";
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+        buildGrid();
+      }
+
+      function render() {
+        applyMouseReveal();
+        updateParticles();
+        emitMouseParticles();
+        updateMouseParticles();
+
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        ctx.fillStyle = BG_COLOR;
+        ctx.fillRect(0, 0, vw, vh);
+        ctx.fillStyle = DOT_COLOR;
+
+        for (let yi = 0; yi < rows; yi++) {
+          for (let xi = 0; xi < cols; xi++) {
+            const idx = yi * cols + xi;
+            if (!logoIsCell[idx]) continue;
+
+            const revealed = logoRevealed[idx];
+            if (revealed <= 0.15) continue;
+
+            const cx = xi * CELL_SIZE + CELL_SIZE / 2;
+            const cy = yi * CELL_SIZE + CELL_SIZE / 2;
+            const a = logoAlpha[idx];
+            const size = CELL_SIZE * (0.55 + a * 0.3);
+            ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+          }
+        }
+
+        for (const p of particles) {
+          ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+        }
+        for (const p of mouseParticles) {
+          ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+        }
+
+        requestAnimationFrame(render);
+      }
+
+      window.addEventListener("resize", resize);
+
+      resize();
+      initParticles();
+      requestAnimationFrame(render);
+    </script>
+  </body>
+</html>

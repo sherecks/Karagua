@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { EASE_OUT_QUART } from "@/lib/motion";
-import { animate, motion, useInView, useReducedMotion } from "motion/react";
+import { animate, useInView, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
 type Source = {
@@ -15,9 +15,9 @@ type DataPointProps = {
   display: string;
   /** Sufixo opcional renderizado pequeno após o número (ex.: "%"). Só usado quando há `value`. */
   suffix?: string;
-  /** Fontes citáveis exibidas no popover. Pelo menos uma. */
+  /** Fontes citáveis do dado (não exibidas na UI, mantidas para referência). */
   sources: Source[];
-  /** Texto curto descrevendo o que o número significa, para o aria-label do trigger. */
+  /** Texto curto descrevendo o que o número significa, para o atributo aria-label. */
   ariaLabel: string;
   /** Classes para o slot do número. */
   className?: string;
@@ -38,13 +38,12 @@ function formatNumber(n: number, display: string): string {
 
 /**
  * Materializa o princípio "cada número tem uma fonte". Conta de 0 ao valor
- * ao entrar no viewport e abre um popover com a citação ao hover/focus.
+ * ao entrar no viewport.
  */
 export function DataPoint({
   value,
   display,
   suffix,
-  sources,
   ariaLabel,
   className,
   numberClassName,
@@ -59,8 +58,6 @@ export function DataPoint({
   const [text, setText] = useState<string>(
     value != null && !reduceMotion ? formatNumber(0, display) : display,
   );
-  const [open, setOpen] = useState(false);
-  const hoverTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (value == null) return;
@@ -78,74 +75,18 @@ export function DataPoint({
     return () => controls.stop();
   }, [inView, value, display, reduceMotion, countDurationMs]);
 
-  function handleEnter() {
-    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
-    setOpen(true);
-  }
-  function handleLeave() {
-    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
-    hoverTimer.current = window.setTimeout(() => setOpen(false), 120);
-  }
-
   return (
-    <span ref={ref} className="relative inline-flex flex-col">
-      <button
-        type="button"
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-        onFocus={handleEnter}
-        onBlur={handleLeave}
-        aria-label={`${ariaLabel} — ver fontes`}
-        aria-expanded={open}
-        className={cn(
-          "group/dp relative inline-flex w-fit cursor-help items-baseline gap-1 rounded-sm text-left",
-          "after:absolute after:-bottom-1 after:left-0 after:h-px after:w-full after:scale-x-0 after:bg-current after:opacity-30 after:transition-transform after:duration-200 after:ease-[cubic-bezier(0.25,1,0.5,1)] after:content-['']",
-          "hover:after:scale-x-100 focus-visible:after:scale-x-100",
-          className,
-        )}
-      >
-        <span className={cn("font-mono text-k-deep tabular-nums", sizeClass, numberClassName)}>
-          {text}
-        </span>
-        {suffix ? (
-          <span className={cn("font-mono text-k-deep", suffixSizeClass)}>{suffix}</span>
-        ) : null}
-      </button>
-
-      <motion.span
-        role="tooltip"
-        aria-hidden={!open}
-        initial={false}
-        animate={{
-          opacity: open ? 1 : 0,
-          y: open ? 0 : -4,
-          pointerEvents: open ? "auto" : "none",
-        }}
-        transition={{ duration: 0.18, ease: EASE_OUT_QUART }}
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-        className="absolute top-full left-0 z-30 mt-3 w-[min(20rem,calc(100vw-2rem))] rounded-md border border-border bg-k-elevated p-3 text-left shadow-[0_8px_24px_-12px_rgb(26_35_50/0.18)]"
-      >
-        <span className="block text-label text-k-ink-soft">Fonte</span>
-        <ul className="mt-2 space-y-1.5">
-          {sources.map((s, i) => (
-            <li key={i} className="text-sm leading-snug text-k-ink">
-              {s.url ? (
-                <a
-                  href={s.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="underline decoration-k-deep/40 decoration-1 underline-offset-2 hover:decoration-k-deep"
-                >
-                  {s.label}
-                </a>
-              ) : (
-                <span>{s.label}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </motion.span>
+    <span
+      ref={ref}
+      aria-label={ariaLabel}
+      className={cn("inline-flex w-fit items-baseline gap-1", className)}
+    >
+      <span className={cn("font-mono text-k-deep tabular-nums", sizeClass, numberClassName)}>
+        {text}
+      </span>
+      {suffix ? (
+        <span className={cn("font-mono text-k-deep", suffixSizeClass)}>{suffix}</span>
+      ) : null}
     </span>
   );
 }

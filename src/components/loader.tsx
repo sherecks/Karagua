@@ -1,6 +1,6 @@
 import { EASE_OUT_QUART } from "@/lib/motion";
 import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 const TOPO_SRC = `${import.meta.env.BASE_URL}topo.svg`.replace(/\/+/g, "/");
 
@@ -80,15 +80,6 @@ function makeFog(): FogBlob[] {
 export function Loader() {
   const fog = useMemo(() => makeFog(), []);
   const reduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    const html = document.documentElement;
-    const prev = html.style.overflow;
-    html.style.overflow = "hidden";
-    return () => {
-      html.style.overflow = prev;
-    };
-  }, []);
 
   const topoTargetOpacity = 0.2;
 
