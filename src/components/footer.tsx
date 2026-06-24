@@ -5,16 +5,15 @@ const SocialLinks = [
 ];
 
 const AboutLinks = [
+  { href: "#como-funciona", label: "Como funciona" },
   { href: "#solucao", label: "Solução" },
   { href: "#impacto", label: "Impacto" },
-  { href: "#como-funciona", label: "Como funciona" },
-  { href: "#empresas", label: "Para empresas" },
 ];
 
 /** Footer — carbon surface, restrained. Brand mark in bright on dark. */
 export function Footer() {
   return (
-    <footer className="surface-primary">
+    <footer className="surface-primary overflow-hidden">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-12">
         <div className="flex flex-col gap-10 md:flex-row md:justify-between">
           <div className="flex flex-col gap-2 items-start">
@@ -60,6 +59,22 @@ export function Footer() {
           </p>
         </div>
       </div>
+
+      {/* Wordmark gigante cortado (mask), fechamento de marca da página. */}
+      <div
+        aria-hidden="true"
+        className="-mt-2 h-[clamp(4rem,24vw,20rem)] w-full bg-[#828e1a] sm:-mt-6"
+        style={{
+          maskImage: "url(/logo-2.svg)",
+          maskRepeat: "no-repeat",
+          maskPosition: "center top",
+          maskSize: "100% auto",
+          WebkitMaskImage: "url(/logo-2.svg)",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskPosition: "center top",
+          WebkitMaskSize: "100% auto",
+        }}
+      />
     </footer>
   );
 }

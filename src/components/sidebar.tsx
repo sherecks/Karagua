@@ -8,10 +8,18 @@ type SidebarProps = {
   onClose: () => void;
 };
 
+// Links fixos, sempre visíveis independente da página (home ou não).
+const FIXED_LINKS = [
+  { to: "/laboratorio-karagua-vivo", label: "Laboratório Karaguá" },
+  { to: "/mapa", label: "Mapa do Projeto" },
+];
+
 export function Sidebar({ onClose }: SidebarProps) {
   const itens = NAV_SECTIONS;
   const { pathname } = useLocation();
   const isHome = pathname === "/" || pathname === "/v2";
+  // Não lista o link para a página em que o usuário já está.
+  const fixedLinks = FIXED_LINKS.filter((link) => link.to !== pathname);
 
   function handleNavigate(e: React.MouseEvent<HTMLAnchorElement>, id: string) {
     e.preventDefault();
@@ -54,7 +62,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                 <motion.a
                   href={`#${item.id}`}
                   onClick={(e) => handleNavigate(e, item.id)}
-                  className="text-4xl font-semibold text-white transition-colors hover:text-k-bright sm:text-5xl md:text-6xl"
+                  className="text-3xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
                   initial={{ opacity: 0, x: "100%" }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: "100%" }}
@@ -94,7 +102,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                   <Link
                     to={item.to}
                     onClick={() => startViewTransition(onClose)}
-                    className="text-4xl font-semibold text-white transition-colors hover:text-k-bright sm:text-5xl md:text-6xl"
+                    className="text-3xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
                   >
                     <motion.span
                       className="inline-block origin-left"
@@ -108,35 +116,37 @@ export function Sidebar({ onClose }: SidebarProps) {
                 </motion.div>
               </li>
             ))}
-        <li>
-          <motion.div
-            initial={{ opacity: 0, x: "100%" }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: "100%" }}
-            transition={{
-              type: "tween",
-              delay: (isHome ? itens.length + 1 : 2) * 0.3,
-              duration: 0.64,
-              inherit: true,
-              ease: "circInOut",
-            }}
-          >
-            <Link
-              to="/mapa"
-              onClick={() => startViewTransition(onClose)}
-              className="text-4xl font-semibold text-white transition-colors hover:text-k-bright sm:text-5xl md:text-6xl"
+        {fixedLinks.map((link, index) => (
+          <li key={link.to}>
+            <motion.div
+              initial={{ opacity: 0, x: "100%" }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: "100%" }}
+              transition={{
+                type: "tween",
+                delay: (isHome ? itens.length + 1 + index : 2 + index) * 0.3,
+                duration: 0.64,
+                inherit: true,
+                ease: "circInOut",
+              }}
             >
-              <motion.span
-                className="inline-block origin-left"
-                style={{ fontStyle: "normal" }}
-                whileHover={{ scale: 1.02, fontStyle: "italic", x: 10 }}
-                transition={{ type: "tween", duration: 0.6, ease: EASE_OUT_QUART }}
+              <Link
+                to={link.to}
+                onClick={() => startViewTransition(onClose)}
+                className="text-3xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
               >
-                Mapa
-              </motion.span>
-            </Link>
-          </motion.div>
-        </li>
+                <motion.span
+                  className="inline-block origin-left"
+                  style={{ fontStyle: "normal" }}
+                  whileHover={{ scale: 1.02, fontStyle: "italic", x: 10 }}
+                  transition={{ type: "tween", duration: 0.6, ease: EASE_OUT_QUART }}
+                >
+                  {link.label}
+                </motion.span>
+              </Link>
+            </motion.div>
+          </li>
+        ))}
       </motion.ul>
       <motion.div className="flex h-24 flex-col gap-2 bottom-2 left-6 z-100 absolute">
         <motion.span
