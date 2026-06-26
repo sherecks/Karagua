@@ -3,14 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pixel Beam — Karaguá</title>
+    <title>Mapa de Valor — Karaguá</title>
     <style>
+      /* Mesma fonte do site (style.css): Aileron self-hosted, cai pro
+         system-ui até os .woff2 existirem em /fonts/. */
+      @font-face {
+        font-family: "Aileron";
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+        src: url("/fonts/aileron-regular.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Aileron";
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+        src: url("/fonts/aileron-bold.woff2") format("woff2");
+      }
       html,
       body {
         margin: 0;
         padding: 0;
         overflow: hidden;
-        background: #0d732b;
+        background: #f7f5f0;
         height: 100%;
       }
       canvas {
@@ -22,259 +38,573 @@
     <canvas id="c"></canvas>
 
     <script>
+      // Mapa de valor do projeto Karaguá, plano isométrico estilo HUD/synth:
+      // um "terreno" gerado por ruído serve de base, um campo de barras sobe
+      // dele e todos os 12 pontos (Karaguá + métricas) flutuam sobre o
+      // terreno, ligados por linhas com pulso animado e marcados por forma
+      // (círculo/losango/triângulo/anel) conforme a categoria, igual a
+      // legenda em forma de fluxograma. Sem mouse: só a simulação do
+      // terreno e os pulsos rodando sozinhos, pra sempre.
       const canvas = document.getElementById("c");
       const ctx = canvas.getContext("2d");
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-      const BG_COLOR = "#0d732b";
-      const DOT_COLOR = "#d3e628";
+      // Paleta oficial da marca (Karaguá Ecotech) — só estes tokens, sem cor
+      // inventada. Bright/Mid são "dark surfaces, <=3% accent" por definição,
+      // então sobre o shell claro o verde dominante é o Deep (workhorse).
+      const GREEN_BRIGHT = "#c7d926"; // Bright — não usado aqui (só faz sentido em fundo escuro)
+      const GREEN_MID = "#adbc25"; // Mid — idem, reservado pra hover/active em fundo escuro
+      const GREEN_DEEP = "#828e1a"; // Deep — workhorse, links, ênfase em fundo claro
+      const SURFACE_SHELL = "#f7f5f0"; // fundo padrão da página — desta peça
+      const SURFACE_ELEVATED = "#fbf9f4"; // cards/painéis sobre o shell
+      const TEXT_PRIMARY = "#2c3e50"; // texto principal sobre o shell (>=12:1)
+      const TEXT_SOFT = "#6b7b8d"; // text-secondary — legendas, labels
+      const BORDER = "#e2dfd6"; // hairline neutro, nunca decorativo
 
-      const CELL_SIZE = 6;
-      const MOUSE_RADIUS = 40; // px, raio de influência do cursor sobre a logo
-      const REVEAL_SPEED = 0.35; // velocidade com que a logo "fixa" ao passar o mouse
+      // Mesmas famílias do site (style.css --font-sans / --font-mono):
+      // sans pra nomes/descrições, mono pra valores numéricos (como o
+      // DataPoint faz com font-mono nos números das estatísticas).
+      const FONT_SANS =
+        "'Aileron', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif";
+      const FONT_MONO =
+        "'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace";
 
-      const PARTICLE_COUNT = 70;
-      const RISE_SPEED_MIN = 0.35;
-      const RISE_SPEED_MAX = 0.85;
-      const ABSORB_SHRINK = 0.86; // fator de encolhimento por frame dentro da logo
-      const PARTICLE_REVEAL_SPEED = 0.05; // quanto cada partícula absorvida "deposita" na logo
-
-      let cols = 0;
-      let rows = 0;
-      let logoIsCell = new Uint8Array(0); // 1 = célula pertence à logo (não anima)
-      let logoAlpha = new Float32Array(0); // cobertura 0..1 amostrada da logo
-      let logoRevealed = new Float32Array(0); // 0..1, fica permanente ao passar o mouse
-
-      const mouse = { x: -9999, y: -9999, active: false };
-      window.addEventListener("mousemove", (e) => {
-        mouse.x = e.clientX;
-        mouse.y = e.clientY;
-        mouse.active = true;
-      });
-      window.addEventListener("mouseleave", () => (mouse.active = false));
-
-      const logoImg = new Image();
-      let logoReady = false;
-      logoImg.onload = () => {
-        logoReady = true;
-        buildGrid();
-      };
-      logoImg.src = "/logo-2.svg";
-
-      function sampleLogoMask(logoBox) {
-        const sampleScale = 2;
-        const offW = Math.round(logoBox.w * sampleScale);
-        const offH = Math.round(logoBox.h * sampleScale);
-        const off = document.createElement("canvas");
-        off.width = offW;
-        off.height = offH;
-        const offCtx = off.getContext("2d");
-        offCtx.drawImage(logoImg, 0, 0, offW, offH);
-        return { data: offCtx.getImageData(0, 0, offW, offH).data, w: offW, h: offH };
+      function withAlpha(hex, a) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
       }
 
-      function buildGrid() {
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        cols = Math.ceil(vw / CELL_SIZE);
-        rows = Math.ceil(vh / CELL_SIZE);
-        const total = cols * rows;
+      const TEXT = TEXT_PRIMARY;
+      const MESH = withAlpha(GREEN_DEEP, 0.45);
 
-        const logoW = Math.min(vw * 0.86, 1400);
-        const logoH = logoW * (162 / 494);
-        const logoBox = {
-          x: (vw - logoW) / 2,
-          y: (vh - logoH) / 2,
-          w: logoW,
-          h: logoH,
+      const ISO_COS = Math.cos(Math.PI / 6);
+      const ISO_SIN = Math.sin(Math.PI / 6);
+      const COLS = 16;
+      const ROWS = 11;
+
+      let vw = 0,
+        vh = 0,
+        scaleF = 1;
+      let CELL = 0,
+        ORIGIN_X = 0,
+        ORIGIN_Y = 0,
+        TERRAIN_AMP = 0,
+        BAR_AMP = 0;
+
+      // Projeção isométrica relativa à origem (0,0) — usada tanto pra
+      // desenhar quanto pra calibrar a centralização em resize().
+      function isoRel(gx, gy, z) {
+        return {
+          x: (gx - gy) * CELL * ISO_COS,
+          y: (gx + gy) * CELL * ISO_SIN - (z || 0),
         };
-        const mask = logoReady ? sampleLogoMask(logoBox) : null;
+      }
 
-        logoIsCell = new Uint8Array(total);
-        logoAlpha = new Float32Array(total);
-        logoRevealed = new Float32Array(total);
+      function isoPt(gx, gy, z) {
+        const p = isoRel(gx, gy, z);
+        return { x: ORIGIN_X + p.x, y: ORIGIN_Y + p.y };
+      }
 
-        for (let yi = 0; yi < rows; yi++) {
-          for (let xi = 0; xi < cols; xi++) {
-            const idx = yi * cols + xi;
-            const cx = xi * CELL_SIZE + CELL_SIZE / 2;
-            const cy = yi * CELL_SIZE + CELL_SIZE / 2;
+      function terrainHeight(gx, gy, time) {
+        return (
+          (Math.sin(gx * 0.35 + time * 0.9) * 0.5 +
+            Math.cos(gy * 0.28 - time * 0.6) * 0.45 +
+            Math.sin((gx + gy) * 0.15 + time * 0.4) * 0.7) *
+          TERRAIN_AMP
+        );
+      }
 
-            if (
-              mask &&
-              cx >= logoBox.x &&
-              cx <= logoBox.x + logoBox.w &&
-              cy >= logoBox.y &&
-              cy <= logoBox.y + logoBox.h
-            ) {
-              const sx = Math.floor(((cx - logoBox.x) / logoBox.w) * mask.w);
-              const sy = Math.floor(((cy - logoBox.y) / logoBox.h) * mask.h);
-              const a = mask.data[(sy * mask.w + sx) * 4 + 3] ?? 0;
-              if (a > 28) {
-                logoIsCell[idx] = 1;
-                logoAlpha[idx] = a / 255;
-              }
-            }
+      // ── Todos os pontos vivem no terreno agora: Karaguá no centro (sem
+      // forma própria, só o maior) e os outros 11 com forma por categoria
+      // — círculo (território), losango (capital/mercado), triângulo
+      // (impacto social), anel (base legal) — espalhados perto do meio
+      // da grade (COLS/2, ROWS/2) em vez de nas bordas. ──
+      const PINS = [
+        {
+          id: "karagua",
+          gx: 8,
+          gy: 5,
+          stem: 190,
+          r: 15,
+          label: "KARAGUÁ",
+          sub: "HUB DO PROJETO",
+          shape: null,
+          fill: GREEN_DEEP,
+          mono: false,
+        },
+        {
+          id: "mercado",
+          gx: 5,
+          gy: 4,
+          stem: 210,
+          r: 16,
+          label: "US$ 50B",
+          sub: "MERCADO DE CARBONO BR · 2030",
+          shape: "ring",
+          fill: GREEN_DEEP,
+          mono: true,
+        },
+        {
+          id: "receita",
+          gx: 4,
+          gy: 7,
+          stem: 120,
+          r: 11,
+          label: "R$ 1,2M/ANO",
+          sub: "RECEITA ESTIMADA · PILOTO",
+          shape: "ring",
+          fill: GREEN_DEEP,
+          mono: true,
+        },
+        {
+          id: "babitonga",
+          gx: 8,
+          gy: 8,
+          stem: 140,
+          r: 13,
+          label: "BABITONGA",
+          sub: "4.000 HA · META 2036",
+          shape: "circle",
+          fill: GREEN_DEEP,
+          mono: false,
+        },
+        {
+          id: "barra-sul",
+          gx: 11,
+          gy: 8,
+          stem: 70,
+          r: 9,
+          label: "BARRA DO SUL",
+          sub: "380 HA · PILOTO",
+          shape: "circle",
+          fill: GREEN_DEEP,
+          mono: false,
+        },
+        {
+          id: "potencial",
+          gx: 6,
+          gy: 9,
+          stem: 95,
+          r: 10,
+          label: "8.000 HA",
+          sub: "POTENCIAL TOTAL NA BABITONGA",
+          shape: "circle",
+          fill: GREEN_DEEP,
+          mono: true,
+        },
+        {
+          id: "familias",
+          gx: 14,
+          gy: 4,
+          stem: 105,
+          r: 8,
+          label: "+400 FAM.",
+          sub: "IMPACTADAS ATÉ 2035",
+          shape: "circle",
+          fill: GREEN_DEEP,
+          mono: true,
+        },
+        {
+          id: "lei",
+          gx: 13,
+          gy: 5,
+          stem: 220,
+          r: 7,
+          label: "LEI 15.042/24",
+          sub: "MERCADO REGULADO DE CARBONO",
+          shape: "ring",
+          fill: GREEN_DEEP,
+          mono: true,
+        },
+        {
+          id: "verra",
+          gx: 14,
+          gy: 8,
+          stem: 60,
+          r: 7,
+          label: "VM0033·VM0007",
+          sub: "METODOLOGIAS VERRA CERTIFICADAS",
+          shape: "ring",
+          fill: GREEN_DEEP,
+          mono: true,
+        },
+      ];
+
+      // Karaguá no centro conectado a todo mundo, mais a linha especial
+      // que mostra o piloto "escalando" até a Babitonga.
+      const EDGES = [
+        ["karagua", "mercado", "spoke"],
+        ["karagua", "receita", "spoke"],
+        ["karagua", "babitonga", "spoke"],
+        ["karagua", "barra-sul", "spoke"],
+        ["karagua", "potencial", "spoke"],
+        ["karagua", "familias", "spoke"],
+        ["karagua", "lei", "spoke"],
+        ["karagua", "verra", "spoke"],
+        ["barra-sul", "babitonga", "scale"],
+      ];
+
+      function resize() {
+        vw = window.innerWidth;
+        vh = window.innerHeight;
+        canvas.width = vw * dpr;
+        canvas.height = vh * dpr;
+        canvas.style.width = vw + "px";
+        canvas.style.height = vh + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        scaleF = Math.min(1.3, Math.max(0.6, Math.min(vw, vh) / 900));
+        CELL = vw * 0.022;
+        TERRAIN_AMP = 13 * scaleF;
+        BAR_AMP = 75 * scaleF;
+
+        // Calibra ORIGIN_X/Y pra centralizar o terreno + os pinos (topo dos
+        // marcadores incluso) no meio da viewport, em vez de posição fixa.
+        ORIGIN_X = 0;
+        ORIGIN_Y = 0;
+        let minX = Infinity,
+          maxX = -Infinity,
+          minY = Infinity,
+          maxY = -Infinity;
+        const corners = [
+          [0, 0],
+          [COLS, 0],
+          [0, ROWS],
+          [COLS, ROWS],
+        ];
+        for (const [gx, gy] of corners) {
+          const p = isoRel(gx, gy, terrainHeight(gx, gy, 0));
+          minX = Math.min(minX, p.x);
+          maxX = Math.max(maxX, p.x);
+          minY = Math.min(minY, p.y);
+          maxY = Math.max(maxY, p.y);
+        }
+        for (const pin of PINS) {
+          const z0 = terrainHeight(pin.gx, pin.gy, 0);
+          const base = isoRel(pin.gx, pin.gy, z0);
+          const top = isoRel(pin.gx, pin.gy, z0 + pin.stem * scaleF);
+          const labelTop = top.y - pin.r * scaleF - 36 * scaleF;
+          minX = Math.min(minX, base.x, top.x);
+          maxX = Math.max(maxX, base.x, top.x);
+          minY = Math.min(minY, base.y, labelTop);
+          maxY = Math.max(maxY, base.y, top.y);
+        }
+        ORIGIN_X = vw / 2 - (minX + maxX) / 2;
+        ORIGIN_Y = vh / 2 - (minY + maxY) / 2;
+      }
+
+      function drawTerrain(time) {
+        ctx.strokeStyle = MESH;
+        ctx.lineWidth = scaleF;
+        for (let j = 0; j <= ROWS; j++) {
+          ctx.beginPath();
+          for (let i = 0; i <= COLS; i++) {
+            const pt = isoPt(i, j, terrainHeight(i, j, time));
+            if (i === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
           }
+          ctx.stroke();
+        }
+        for (let i = 0; i <= COLS; i++) {
+          ctx.beginPath();
+          for (let j = 0; j <= ROWS; j++) {
+            const pt = isoPt(i, j, terrainHeight(i, j, time));
+            if (j === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.stroke();
         }
       }
 
-      // Mouse "fixa" a logo nas células próximas, permanentemente.
-      function applyMouseReveal() {
-        if (!mouse.active || cols === 0) return;
-        const cellRadius = Math.ceil(MOUSE_RADIUS / CELL_SIZE);
-        const mx = Math.floor(mouse.x / CELL_SIZE);
-        const my = Math.floor(mouse.y / CELL_SIZE);
+      function drawBars(time) {
+        const cxg = COLS * 0.55;
+        const cyg = ROWS * 0.5;
+        const maxD = Math.hypot(COLS, ROWS) * 0.5;
 
-        for (let dy = -cellRadius; dy <= cellRadius; dy++) {
-          for (let dx = -cellRadius; dx <= cellRadius; dx++) {
-            const xi = mx + dx;
-            const yi = my + dy;
-            if (xi < 0 || xi >= cols || yi < 0 || yi >= rows) continue;
+        for (let j = 0; j <= ROWS; j++) {
+          for (let i = 0; i <= COLS; i++) {
+            const d = Math.hypot(i - cxg, j - cyg) / maxD;
+            const falloff = Math.max(0, 1 - d);
+            if (falloff <= 0) continue;
 
-            const dist = Math.hypot(dx * CELL_SIZE, dy * CELL_SIZE);
-            if (dist > MOUSE_RADIUS) continue;
+            const n = 0.5 + 0.5 * Math.sin(i * 0.9 + j * 1.3 + Math.sin(i * 0.3 - j * 0.2) * 2);
+            const barH = Math.pow(falloff, 1.5) * n * BAR_AMP;
+            if (barH < 4 * scaleF) continue;
 
-            const idx = yi * cols + xi;
-            if (!logoIsCell[idx]) continue;
+            const z0 = terrainHeight(i, j, time);
+            const base = isoPt(i, j, z0);
+            const top = isoPt(i, j, z0 + barH);
 
-            const proximity = 1 - dist / MOUSE_RADIUS;
-            logoRevealed[idx] = Math.min(1, logoRevealed[idx] + proximity * REVEAL_SPEED);
+            const flicker = Math.sin(time * 2 + i + j) * 0.04;
+            ctx.strokeStyle = GREEN_DEEP;
+            ctx.globalAlpha = Math.max(0.12, Math.min(0.85, 0.2 + falloff * 0.45 + flicker));
+            ctx.lineWidth = 1.4 * scaleF;
+            ctx.beginPath();
+            ctx.moveTo(base.x, base.y);
+            ctx.lineTo(top.x, top.y);
+            ctx.stroke();
           }
         }
+        ctx.globalAlpha = 1;
       }
 
-      // Partículas: sobem como bolhas de oxigênio e são "absorvidas" ao entrar na logo.
-      let particles = [];
-
-      function spawnParticle(p) {
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        p = p || {};
-        p.x = Math.random() * vw;
-        p.y = vh + Math.random() * 60;
-        p.vy = -(RISE_SPEED_MIN + Math.random() * (RISE_SPEED_MAX - RISE_SPEED_MIN));
-        p.phase = Math.random() * Math.PI * 2;
-        p.size = 2.5 + Math.random() * 2.5;
-        return p;
-      }
-
-      function initParticles() {
-        particles = [];
-        for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(spawnParticle());
-      }
-
-      function updateParticles() {
-        for (const p of particles) {
-          p.phase += 0.02;
-          p.x += Math.sin(p.phase) * 0.4;
-          p.y += p.vy;
-
-          const xi = Math.floor(p.x / CELL_SIZE);
-          const yi = Math.floor(p.y / CELL_SIZE);
-          const idx = xi >= 0 && xi < cols && yi >= 0 && yi < rows ? yi * cols + xi : -1;
-          const insideLogo = idx >= 0 && logoIsCell[idx];
-
-          if (insideLogo) {
-            logoRevealed[idx] = Math.min(1, logoRevealed[idx] + PARTICLE_REVEAL_SPEED);
-            p.size *= ABSORB_SHRINK;
-          }
-
-          if (p.y < -20 || p.size < 0.5) spawnParticle(p);
+      // Selo plano (sem preenchimento de glow) atrás da esfera, indicando a
+      // categoria do ponto — mesmo vocabulário visual da legenda.
+      function drawShapeBadge(shape, x, y, size, color) {
+        if (!shape) return;
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5 * scaleF;
+        ctx.beginPath();
+        if (shape === "circle") {
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (shape === "diamond") {
+          ctx.moveTo(x, y - size);
+          ctx.lineTo(x + size, y);
+          ctx.lineTo(x, y + size);
+          ctx.lineTo(x - size, y);
+          ctx.closePath();
+          ctx.fill();
+        } else if (shape === "triangle") {
+          ctx.moveTo(x, y - size);
+          ctx.lineTo(x + size * 0.87, y + size * 0.5);
+          ctx.lineTo(x - size * 0.87, y + size * 0.5);
+          ctx.closePath();
+          ctx.fill();
+        } else if (shape === "ring") {
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.stroke();
         }
+        ctx.globalAlpha = 1;
       }
 
-      // Partículas soltas pelo mouse: nascem no cursor, somem ao chegar no topo (não renascem).
-      const MOUSE_EMIT_CHANCE = 0.6;
-      const MOUSE_PARTICLE_CAP = 180;
-      let mouseParticles = [];
+      function drawPin(p, time) {
+        const z0 = terrainHeight(p.gx, p.gy, time);
+        const base = isoPt(p.gx, p.gy, z0);
+        const bob = Math.sin(time * 1.3 + p.gx) * 4 * scaleF;
+        const top = isoPt(p.gx, p.gy, z0 + p.stem * scaleF + bob);
+        const r = p.r * scaleF;
 
-      function emitMouseParticles() {
-        if (!mouse.active) return;
-        if (mouseParticles.length >= MOUSE_PARTICLE_CAP) return;
-        if (Math.random() > MOUSE_EMIT_CHANCE) return;
-        mouseParticles.push({
-          x: mouse.x + (Math.random() - 0.5) * 12,
-          y: mouse.y + (Math.random() - 0.5) * 12,
-          vy: -(RISE_SPEED_MIN + Math.random() * (RISE_SPEED_MAX - RISE_SPEED_MIN)),
-          phase: Math.random() * Math.PI * 2,
-          size: 2.5 + Math.random() * 2.5,
+        ctx.strokeStyle = GREEN_DEEP;
+        ctx.globalAlpha = 0.85;
+        ctx.lineWidth = 1.5 * scaleF;
+        ctx.beginPath();
+        ctx.moveTo(base.x, base.y);
+        ctx.lineTo(top.x, top.y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        ctx.fillStyle = GREEN_DEEP;
+        ctx.beginPath();
+        ctx.arc(base.x, base.y, 3 * scaleF, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawShapeBadge(p.shape, top.x, top.y, r * 1.45, p.fill);
+
+        // Marcador flat, sem gradiente/glow — sharp radius e superfícies
+        // chapadas, igual ao resto do design system do site.
+        ctx.fillStyle = p.fill;
+        ctx.beginPath();
+        ctx.arc(top.x, top.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = withAlpha(BORDER, 0.9);
+        ctx.lineWidth = 1.5 * scaleF;
+        ctx.stroke();
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = TEXT;
+        ctx.font = `700 ${13 * scaleF}px ${p.mono ? FONT_MONO : FONT_SANS}`;
+        ctx.fillText(p.label, top.x, top.y - r - 22 * scaleF);
+        ctx.fillStyle = TEXT_SOFT;
+        ctx.font = `400 ${10 * scaleF}px ${FONT_SANS}`;
+        ctx.fillText(p.sub, top.x, top.y - r - 9 * scaleF);
+
+        return top;
+      }
+
+      // Desenha todas as arestas + um pulso viajando por cada uma, com
+      // fase própria (mais aresta animada, não só Barra do Sul ↔ Babitonga).
+      function drawEdges(pinAnchors, t) {
+        EDGES.forEach(([fromId, toId, kind], idx) => {
+          const a = pinAnchors[fromId];
+          const b = pinAnchors[toId];
+          if (!a || !b) return; // ignora arestas órfãs se um ponto for removido
+          const isScale = kind === "scale";
+
+          ctx.strokeStyle = isScale ? withAlpha(GREEN_DEEP, 0.65) : withAlpha(GREEN_DEEP, 0.35);
+          ctx.lineWidth = (isScale ? 2 : 1) * scaleF;
+          if (!isScale) ctx.setLineDash([5 * scaleF, 5 * scaleF]);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          const speed = isScale ? 0.0035 : 0.0022;
+          const phaseOffset = idx * 0.31;
+          for (let k = 0; k < 2; k++) {
+            const p = (t * speed + phaseOffset + k * 0.5) % 1;
+            const px = a.x + (b.x - a.x) * p;
+            const py = a.y + (b.y - a.y) * p;
+            ctx.fillStyle = GREEN_DEEP;
+            ctx.beginPath();
+            ctx.arc(px, py, (isScale ? 3 : 2) * scaleF, 0, Math.PI * 2);
+            ctx.fill();
+          }
         });
       }
 
-      function updateMouseParticles() {
-        for (let i = mouseParticles.length - 1; i >= 0; i--) {
-          const p = mouseParticles[i];
-          p.phase += 0.02;
-          p.x += Math.sin(p.phase) * 0.4;
-          p.y += p.vy;
+      function drawTitle() {
+        const pad = 10 * scaleF;
+        const titleSize = 15 * scaleF;
+        const subSize = 10.5 * scaleF;
+        ctx.textBaseline = "alphabetic";
+        ctx.textAlign = "left";
+        ctx.font = `700 ${titleSize}px ${FONT_SANS}`;
+        const text = "KARAGUÁ — BARRA DO SUL → BABITONGA";
+        const w = ctx.measureText(text).width;
+        const x = 20 * scaleF;
+        const y = 18 * scaleF;
+        const boxW = w + pad * 2;
+        const boxH = titleSize + subSize + pad * 2 + 6 * scaleF;
 
-          const xi = Math.floor(p.x / CELL_SIZE);
-          const yi = Math.floor(p.y / CELL_SIZE);
-          const idx = xi >= 0 && xi < cols && yi >= 0 && yi < rows ? yi * cols + xi : -1;
-          const insideLogo = idx >= 0 && logoIsCell[idx];
+        ctx.fillStyle = withAlpha(SURFACE_ELEVATED, 0.92);
+        ctx.fillRect(x, y, boxW, boxH);
+        ctx.strokeStyle = withAlpha(BORDER, 0.4);
+        ctx.lineWidth = scaleF;
+        ctx.strokeRect(x, y, boxW, boxH);
 
-          if (insideLogo) {
-            logoRevealed[idx] = Math.min(1, logoRevealed[idx] + PARTICLE_REVEAL_SPEED);
-            p.size *= ABSORB_SHRINK;
+        ctx.fillStyle = TEXT;
+        ctx.fillText(text, x + pad, y + pad + titleSize - 3 * scaleF);
+        ctx.fillStyle = TEXT_SOFT;
+        ctx.font = `400 ${subSize}px ${FONT_SANS}`;
+        ctx.fillText(
+          "MAPA DE VALOR DO PROJETO",
+          x + pad,
+          y + pad + titleSize + subSize + 2 * scaleF,
+        );
+      }
+
+      function drawLegend() {
+        const items = [
+          {
+            mark: "diamond",
+            color: GREEN_DEEP,
+            label: "CAPITAL & MERCADO",
+            sub: "US$ 50B · RECEITA",
+          },
+          {
+            mark: "circle",
+            color: GREEN_DEEP,
+            label: "TERRITÓRIO",
+            sub: "BABITONGA · BARRA DO SUL · POTENCIAL",
+          },
+          {
+            mark: "triangle",
+            color: GREEN_DEEP,
+            label: "IMPACTO SOCIAL",
+            sub: "FAMÍLIAS IMPACTADAS",
+          },
+          { mark: "ring", color: GREEN_DEEP, label: "BASE LEGAL", sub: "LEI 15.042 · VERRA" },
+          { mark: "line", color: GREEN_DEEP, label: "CONEXÃO", sub: "FLUXO ENTRE OS PONTOS" },
+        ];
+        const rowH = 38 * scaleF;
+        const margin = 20 * scaleF;
+        const panelW = 240 * scaleF;
+        const panelH = items.length * rowH + 24 * scaleF;
+        const boxX = margin;
+        const boxY = vh - panelH - margin;
+        const x0 = boxX + 16 * scaleF;
+        const y0 = boxY + 20 * scaleF;
+
+        ctx.fillStyle = withAlpha(SURFACE_ELEVATED, 0.92);
+        ctx.fillRect(boxX, boxY, panelW, panelH);
+        ctx.strokeStyle = withAlpha(BORDER, 0.4);
+        ctx.lineWidth = scaleF;
+        ctx.strokeRect(boxX, boxY, panelW, panelH);
+
+        ctx.strokeStyle = withAlpha(GREEN_DEEP, 0.45);
+        ctx.setLineDash([4 * scaleF, 4 * scaleF]);
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x0, y0 + (items.length - 1) * rowH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        items.forEach((it, i) => {
+          const y = y0 + i * rowH;
+          ctx.fillStyle = it.color;
+          ctx.beginPath();
+          if (it.mark === "circle") {
+            ctx.arc(x0, y, 5 * scaleF, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (it.mark === "diamond") {
+            ctx.moveTo(x0, y - 6 * scaleF);
+            ctx.lineTo(x0 + 6 * scaleF, y);
+            ctx.lineTo(x0, y + 6 * scaleF);
+            ctx.lineTo(x0 - 6 * scaleF, y);
+            ctx.closePath();
+            ctx.fill();
+          } else if (it.mark === "triangle") {
+            ctx.moveTo(x0, y - 6 * scaleF);
+            ctx.lineTo(x0 + 5.2 * scaleF, y + 3 * scaleF);
+            ctx.lineTo(x0 - 5.2 * scaleF, y + 3 * scaleF);
+            ctx.closePath();
+            ctx.fill();
+          } else if (it.mark === "ring") {
+            ctx.strokeStyle = it.color;
+            ctx.lineWidth = 1.5 * scaleF;
+            ctx.arc(x0, y, 5 * scaleF, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (it.mark === "line") {
+            ctx.strokeStyle = it.color;
+            ctx.lineWidth = 1.5 * scaleF;
+            ctx.moveTo(x0 - 6 * scaleF, y);
+            ctx.lineTo(x0 + 6 * scaleF, y);
+            ctx.stroke();
           }
 
-          if (p.y < -20 || p.size < 0.5) mouseParticles.splice(i, 1);
-        }
+          ctx.textAlign = "left";
+          ctx.fillStyle = TEXT;
+          ctx.font = `700 ${11.5 * scaleF}px ${FONT_SANS}`;
+          ctx.fillText(it.label, x0 + 18 * scaleF, y - 2 * scaleF);
+          ctx.fillStyle = TEXT_SOFT;
+          ctx.font = `400 ${10 * scaleF}px ${FONT_SANS}`;
+          ctx.fillText(it.sub, x0 + 18 * scaleF, y + 12 * scaleF);
+        });
       }
 
-      function resize() {
-        canvas.width = window.innerWidth * dpr;
-        canvas.height = window.innerHeight * dpr;
-        canvas.style.width = window.innerWidth + "px";
-        canvas.style.height = window.innerHeight + "px";
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.scale(dpr, dpr);
-        buildGrid();
-      }
+      let t = 0;
 
       function render() {
-        applyMouseReveal();
-        updateParticles();
-        emitMouseParticles();
-        updateMouseParticles();
+        t += 1;
+        const time = t * 0.02;
 
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        ctx.fillStyle = BG_COLOR;
+        ctx.fillStyle = SURFACE_SHELL;
         ctx.fillRect(0, 0, vw, vh);
-        ctx.fillStyle = DOT_COLOR;
 
-        for (let yi = 0; yi < rows; yi++) {
-          for (let xi = 0; xi < cols; xi++) {
-            const idx = yi * cols + xi;
-            if (!logoIsCell[idx]) continue;
+        drawTerrain(time);
+        drawBars(time);
 
-            const revealed = logoRevealed[idx];
-            if (revealed <= 0.15) continue;
-
-            const cx = xi * CELL_SIZE + CELL_SIZE / 2;
-            const cy = yi * CELL_SIZE + CELL_SIZE / 2;
-            const a = logoAlpha[idx];
-            const size = CELL_SIZE * (0.55 + a * 0.3);
-            ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
-          }
+        const pinAnchors = {};
+        for (const p of PINS) {
+          pinAnchors[p.id] = drawPin(p, time);
         }
 
-        for (const p of particles) {
-          ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
-        }
-        for (const p of mouseParticles) {
-          ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
-        }
+        drawEdges(pinAnchors, t);
+
+        drawTitle();
+        drawLegend();
 
         requestAnimationFrame(render);
       }
 
       window.addEventListener("resize", resize);
-
       resize();
-      initParticles();
       requestAnimationFrame(render);
     </script>
   </body>

@@ -1,10 +1,10 @@
-import { PixelBeamBackground } from "@/components/lp/pixel-beam-background";
+import { ValueMapBackground } from "@/components/lp/value-map-background";
 import { fadeUp, maskRise, stagger } from "@/lib/motion";
 import { motion } from "motion/react";
 
 /**
- * Hero — eyebrow + headline display à esquerda, painel decorativo (pixel-beam)
- * à direita em telas grandes, espelhando o split das demais seções.
+ * Hero — eyebrow + headline display à esquerda, painel decorativo (mapa de
+ * valor) à direita em telas grandes, espelhando o split das demais seções.
  */
 export function Hero() {
   return (
@@ -32,7 +32,7 @@ export function Hero() {
       </div>
 
       <div className="relative hidden overflow-hidden rounded-xl lg:block">
-        <PixelBeamBackground logoSrc="/logo-sm-1.svg" />
+        <ValueMapBackground />
       </div>
     </section>
   );
