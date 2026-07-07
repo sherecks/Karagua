@@ -1,12 +1,14 @@
 import { motion } from "motion/react";
 import { useEffect } from "react";
 import { Footer } from "@/components/footer";
+import { Parallax } from "@/components/parallax";
 import { SiteHeader } from "@/components/site-header";
+import { ScrollRevealText } from "@/components/lp/scroll-reveal-text";
 import { Section, SectionHeader } from "@/components/lp/section";
-import { fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
+import { clipWipe, fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
 
-const LAB_IMG = `${import.meta.env.BASE_URL}images/img4.jpg`.replace(/\/+/g, "/");
-const POR_QUE_IMG = `${import.meta.env.BASE_URL}images/img5.jpeg`.replace(/\/+/g, "/");
+const LAB_IMG_BASE = `${import.meta.env.BASE_URL}images/img4`.replace(/\/+/g, "/");
+const POR_QUE_IMG_BASE = `${import.meta.env.BASE_URL}images/img5`.replace(/\/+/g, "/");
 
 const cycleSteps = [
   "Modelagem digital",
@@ -131,7 +133,7 @@ export function LaboratorioPage() {
           <h1 className="mt-4 max-w-[26ch] overflow-hidden text-[clamp(2.1rem,4.6vw,4.5rem)] leading-[1.02] -tracking-[0.02em] font-thin text-k-ink">
             <motion.span variants={maskRise} className="block">
               Um laboratório de impressão 3D feito pela{" "}
-              <span className="font-bold text-k-bright">comunidade que vive do manguezal</span>
+              <span className="font-bold text-k-deep">comunidade que vive do manguezal</span>
             </motion.span>
           </h1>
           <motion.p
@@ -153,14 +155,23 @@ export function LaboratorioPage() {
       <section id="o-que-e" className="bg-k-fog">
         <div className="grid lg:grid-cols-[38%_1fr] lg:items-stretch">
           <div className="relative min-h-[40vh] overflow-hidden md:min-h-[50vh] lg:min-h-full">
-            <img
-              src={LAB_IMG}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              className="absolute inset-0 h-full w-full object-cover select-none"
-            />
+            <Parallax amount={120} className="absolute inset-0">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcSet={`${LAB_IMG_BASE}-960.webp 960w, ${LAB_IMG_BASE}-1600.webp 1600w, ${LAB_IMG_BASE}-1920.webp 1920w`}
+                  sizes="(min-width: 1024px) 38vw, 100vw"
+                />
+                <img
+                  src={`${LAB_IMG_BASE}-fallback.jpg`}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  className="absolute inset-0 h-full w-full scale-110 object-cover select-none"
+                />
+              </picture>
+            </Parallax>
           </div>
           <div className="flex flex-col justify-center gap-8 px-4 py-12 md:px-10 md:py-24 lg:pr-16 lg:pl-16 lg:py-28">
             <SectionHeader
@@ -220,21 +231,17 @@ export function LaboratorioPage() {
           ))}
         </motion.div>
 
-        <motion.ol
-          {...reveal}
-          variants={stagger}
-          className="mt-12 flex flex-col gap-6 md:mt-16 md:gap-8"
-        >
+        <motion.ol {...reveal} variants={stagger} className="mt-12 flex flex-col md:mt-16">
           {howItWorks.map((item, i) => (
             <motion.li
               key={item.lead}
               variants={fadeUp}
-              className="grid grid-cols-[auto_1fr] items-baseline gap-x-5 gap-y-1"
+              className="group grid grid-cols-[auto_1fr] items-baseline gap-x-5 border-t border-border py-6 transition-colors duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] last:border-b hover:bg-k-fog md:gap-x-8 md:py-7"
             >
-              <span className="font-mono text-data text-k-deep">
+              <span className="font-mono text-[clamp(1.5rem,3vw,2.25rem)] leading-none font-thin text-k-ink-soft/35 tabular-nums transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:text-k-deep motion-safe:group-hover:translate-x-1.5">
                 {String(i + 1).padStart(2, "0")}
               </span>
-              <p className="text-body text-k-ink-soft">
+              <p className="text-body text-k-ink-soft transition-colors duration-300 group-hover:text-k-ink">
                 <span className="font-semibold text-k-ink">{item.lead}</span> {item.rest}
               </p>
             </motion.li>
@@ -255,12 +262,11 @@ export function LaboratorioPage() {
                 </>
               }
             />
+            <ScrollRevealText
+              text="A conservação de um manguezal não depende só de monitoramento e restauração. Depende de uma cultura de pertencimento e cuidado, construída pela própria comunidade."
+              className="measure text-[clamp(1.15rem,1.9vw,1.6rem)] leading-snug font-medium text-k-ink"
+            />
             <motion.div {...reveal} variants={stagger} className="measure flex flex-col gap-5">
-              <motion.p variants={fadeUp} className="text-body text-k-ink-soft">
-                A conservação de um manguezal não depende só de monitoramento e restauração. Depende
-                de uma cultura de pertencimento e cuidado, construída e transmitida pela própria
-                comunidade.
-              </motion.p>
               <motion.p variants={fadeUp} className="text-body text-k-ink-soft">
                 Quando ensinada e praticada no território, a tecnologia se torna um instrumento
                 cultural: amplia a capacidade de quem vive ali de compreender, proteger e
@@ -274,14 +280,23 @@ export function LaboratorioPage() {
             </motion.div>
           </div>
           <div className="relative min-h-[40vh] overflow-hidden md:min-h-[50vh] lg:min-h-full">
-            <img
-              src={POR_QUE_IMG}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              className="absolute inset-0 h-full w-full object-cover select-none"
-            />
+            <Parallax amount={120} className="absolute inset-0">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcSet={`${POR_QUE_IMG_BASE}-960.webp 960w, ${POR_QUE_IMG_BASE}-1600.webp 1600w, ${POR_QUE_IMG_BASE}-1920.webp 1920w`}
+                  sizes="(min-width: 1024px) 50vw, 100vw"
+                />
+                <img
+                  src={`${POR_QUE_IMG_BASE}-fallback.jpg`}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  className="absolute inset-0 h-full w-full scale-110 object-cover select-none"
+                />
+              </picture>
+            </Parallax>
           </div>
         </div>
       </section>
@@ -303,7 +318,7 @@ export function LaboratorioPage() {
               variants={fadeUp}
               className="flex gap-4 text-body text-k-ink-soft"
             >
-              <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-k-bright" />
+              <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-k-deep" />
               <p className="measure">
                 {item.text}
                 {item.bold ? (
@@ -332,11 +347,17 @@ export function LaboratorioPage() {
           className="mt-10 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-8 md:mt-16"
         >
           {legacy.map((item) => (
-            <motion.div key={item.label} variants={fadeUp} className="flex flex-col gap-3">
+            <motion.div
+              key={item.label}
+              variants={fadeUp}
+              className="group flex flex-col gap-3 border-t border-border pt-6 transition-colors duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] hover:border-k-deep/40"
+            >
               <span className="font-mono text-data tracking-[0.1em] text-k-deep uppercase">
                 {item.label}
               </span>
-              <p className="text-body text-k-ink-soft">{item.text}</p>
+              <p className="text-body text-k-ink-soft transition-colors duration-300 group-hover:text-k-ink">
+                {item.text}
+              </p>
             </motion.div>
           ))}
         </motion.div>
@@ -400,10 +421,10 @@ export function LaboratorioPage() {
       {/* CTA final */}
       <Section id="cta-final" surface="fog">
         <motion.div {...reveal} variants={stagger} className="flex flex-col">
-          <h2 className="max-w-[24ch] overflow-hidden text-[clamp(2rem,5vw,4.5rem)] leading-[1] font-thin text-k-ink">
-            <motion.span variants={fadeUp} className="block">
+          <h2 className="max-w-[24ch] text-[clamp(2rem,5vw,4.5rem)] leading-[1] font-thin text-k-ink">
+            <motion.span variants={clipWipe} className="block">
               Cultura, tecnologia e{" "}
-              <span className="font-bold text-k-bright">manguezal andando juntos.</span>
+              <span className="font-bold text-k-deep">manguezal andando juntos.</span>
             </motion.span>
           </h2>
           <motion.p variants={fadeUp} className="measure mt-6 text-body text-k-ink-soft">

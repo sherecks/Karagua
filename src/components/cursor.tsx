@@ -7,12 +7,18 @@ import { useEffect, useRef, useState } from "react";
 // O negativo só funciona fora de um stacking context isolado: por isso o
 // nó é `position: fixed` direto sob um <div> simples (sem position/z-index/
 // opacity/transform), mesclando com o backdrop do contexto raiz = a página.
+//
+// Contextual (referência BASIC/DEPT): sobre um elemento com `data-cursor-label`
+// o disco cresce, troca o blend pelo verde k-deep e mostra um micro-rótulo
+// sóbrio (ex.: "abrir"). Todo o estado visual é imperativo, no loop RAF, para
+// não conflitar com re-render do React.
 
 const INTERACTIVE =
   'a[href], button:not([disabled]), [role="button"]:not([aria-disabled="true"]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), label[for], [data-cursor-pointer]';
 
 const SIZE = 64;
 const HOVER_SCALE = 0.7; // encolhe sobre clicável
+const LABEL_SCALE = 1.5; // cresce sobre área com rótulo
 const FOLLOW = 0.22; // suavização linear de posição (sem mola)
 const SCALE_FOLLOW = 0.2; // suavização linear da escala
 
@@ -21,6 +27,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export function Cursor() {
   const [active, setActive] = useState(false);
   const dotRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const mqFine = window.matchMedia("(pointer: fine)");
@@ -46,6 +53,8 @@ export function Cursor() {
     const pos = { x: -9999, y: -9999 };
     let scale = 1;
     let hovering = false;
+    let label: string | null = null;
+    let appliedLabel: string | null = null; // último rótulo refletido no DOM
     let started = false;
     let raf = 0;
 
@@ -58,15 +67,33 @@ export function Cursor() {
         pos.y = mouse.y;
       }
       const hit = document.elementFromPoint(e.clientX, e.clientY);
-      hovering = !!(hit instanceof Element && hit.closest(INTERACTIVE));
+      const el = hit instanceof Element ? hit : null;
+      hovering = !!(el && el.closest(INTERACTIVE));
+      const labelled = el?.closest<HTMLElement>("[data-cursor-label]");
+      label = labelled?.dataset.cursorLabel ?? null;
+    };
+
+    // Troca de estado visual (blend/cor/texto) só quando o rótulo muda — fora
+    // do caminho quente do RAF.
+    const reflectLabel = (dot: HTMLDivElement, span: HTMLSpanElement) => {
+      if (label === appliedLabel) return;
+      appliedLabel = label;
+      const on = label !== null;
+      dot.style.mixBlendMode = on ? "normal" : "difference";
+      dot.style.background = on ? "var(--k-color-green-karagua-deep)" : "#fff";
+      span.textContent = label ?? "";
+      span.style.opacity = on ? "1" : "0";
     };
 
     const tick = () => {
       pos.x = lerp(pos.x, mouse.x, FOLLOW);
       pos.y = lerp(pos.y, mouse.y, FOLLOW);
-      scale = lerp(scale, hovering ? HOVER_SCALE : 1, SCALE_FOLLOW);
+      const target = label !== null ? LABEL_SCALE : hovering ? HOVER_SCALE : 1;
+      scale = lerp(scale, target, SCALE_FOLLOW);
       const el = dotRef.current;
-      if (el) {
+      const span = labelRef.current;
+      if (el && span) {
+        reflectLabel(el, span);
         const half = SIZE / 2;
         el.style.transform = `translate3d(${pos.x - half}px, ${pos.y - half}px, 0) scale(${scale})`;
       }
@@ -95,6 +122,9 @@ export function Cursor() {
           top: 0,
           width: SIZE,
           height: SIZE,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           borderRadius: "9999px",
           background: "#fff",
           mixBlendMode: "difference",
@@ -104,7 +134,21 @@ export function Cursor() {
           pointerEvents: "none",
           willChange: "transform",
         }}
-      />
+      >
+        <span
+          ref={labelRef}
+          style={{
+            color: "#fff",
+            fontSize: 8,
+            fontWeight: 600,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            opacity: 0,
+            transition: "opacity 160ms ease",
+            userSelect: "none",
+          }}
+        />
+      </div>
     </div>
   );
 }

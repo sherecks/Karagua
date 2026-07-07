@@ -1,6 +1,6 @@
 import { Equal, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Sidebar } from "@/components/sidebar";
 import { EASE_OUT_QUART } from "@/lib/motion";
@@ -9,11 +9,31 @@ import { startViewTransition } from "@/lib/view-transition";
 const iconTransition = { duration: 0.25, ease: EASE_OUT_QUART } as const;
 
 /** Header padrão do site: logo + toggle do menu (Sidebar). Usado na home e em
- * páginas internas — na home o logo rola para o topo, fora dela navega para "/". */
+ * páginas internas — na home o logo rola para o topo, fora dela navega para "/".
+ * Scroll-aware: recolhe ao descer, revela ao subir e ganha fundo translúcido +
+ * blur quando a página sai do topo. */
 export function SiteHeader() {
   const [isOpen, setIsOpen] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const { pathname } = useLocation();
   const isHome = pathname === "/" || pathname === "/v2";
+
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 8);
+      // Só recolhe descendo e bem abaixo do topo; subir revela na hora.
+      if (y > last && y > 140) setHidden(true);
+      else if (y < last) setHidden(false);
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const collapsed = hidden && !isOpen;
 
   return (
     <>
@@ -21,15 +41,17 @@ export function SiteHeader() {
 
       <nav
         aria-label="Navegação principal"
-        className="flex mx-auto flex-row items-center px-4 py-4 justify-between sticky w-full z-100 md:px-8"
+        className={`sticky top-0 z-100 mx-auto flex w-full flex-row items-center justify-between px-4 py-4 transition-[transform,background-color,backdrop-filter] duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] md:px-8 ${
+          collapsed ? "-translate-y-full" : "translate-y-0"
+        } ${scrolled && !collapsed ? "bg-(--surface)/70 backdrop-blur-md" : "bg-transparent"}`}
       >
         {isHome ? (
           <a href="#topo" style={{ viewTransitionName: "brand-mark" }}>
-            <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12" />
+            <img src="/logo-1.svg" alt="Karaguá" className="site-logo w-auto h-12" />
           </a>
         ) : (
           <Link to="/" style={{ viewTransitionName: "brand-mark" }}>
-            <img src="/logo-1.svg" alt="Karaguá" className="w-auto h-12" />
+            <img src="/logo-1.svg" alt="Karaguá" className="site-logo w-auto h-12" />
           </Link>
         )}
 

@@ -6,7 +6,7 @@ const SocialLinks = [
 
 const AboutLinks = [
   { href: "#como-funciona", label: "Como funciona" },
-  { href: "#solucao", label: "Solução" },
+  { href: "#diferencial", label: "Diferencial" },
   { href: "#impacto", label: "Impacto" },
 ];
 
