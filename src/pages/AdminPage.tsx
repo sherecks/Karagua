@@ -39,11 +39,15 @@ export function AdminPage() {
   const [erroEdit, setErroEdit] = useState("");
 
   async function fetchPontos() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pontos_interesse")
       .select("*")
       .order("created_at", { ascending: false });
-    if (data) setPontos(data as PontoInteresse[]);
+    if (error) {
+      setErro(`Falha ao carregar pontos: ${error.message}`);
+      return;
+    }
+    setPontos((data ?? []) as PontoInteresse[]);
   }
 
   useEffect(() => {
@@ -78,7 +82,12 @@ export function AdminPage() {
   }
 
   async function handleDelete(id: string) {
-    await supabase.from("pontos_interesse").delete().eq("id", id);
+    if (!window.confirm("Excluir este ponto? A ação não pode ser desfeita.")) return;
+    const { error } = await supabase.from("pontos_interesse").delete().eq("id", id);
+    if (error) {
+      setErro(`Falha ao excluir: ${error.message}`);
+      return;
+    }
     void fetchPontos();
   }
 
@@ -235,8 +244,21 @@ export function AdminPage() {
 
         {/* Modal de edição */}
         {editing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-            <div className="bg-background rounded-lg shadow-xl w-full max-w-lg p-6 flex flex-col gap-4">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setEditing(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setEditing(null);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Editar ponto"
+              className="bg-background rounded-lg shadow-xl w-full max-w-lg p-6 flex flex-col gap-4"
+            >
               <div className="flex items-center justify-between">
                 <h3 className="text-title font-semibold text-k-ink">Editar ponto</h3>
                 <button

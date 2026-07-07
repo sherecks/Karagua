@@ -1,7 +1,9 @@
 import { EASE_OUT_QUART } from "@/lib/motion";
 import { NAV_SECTIONS } from "@/lib/sections";
+import { SITE_EMAIL } from "@/lib/site";
 import { startViewTransition } from "@/lib/view-transition";
 import { motion } from "motion/react";
+import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 type SidebarProps = {
@@ -20,6 +22,23 @@ export function Sidebar({ onClose }: SidebarProps) {
   const isHome = pathname === "/" || pathname === "/v2";
   // Não lista o link para a página em que o usuário já está.
   const fixedLinks = FIXED_LINKS.filter((link) => link.to !== pathname);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Semântica de diálogo: Escape fecha, scroll da página trava, foco entra no menu.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    rootRef.current?.querySelector<HTMLAnchorElement>("a")?.focus();
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") startViewTransition(onClose);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
 
   function handleNavigate(e: React.MouseEvent<HTMLAnchorElement>, id: string) {
     e.preventDefault();
@@ -33,6 +52,10 @@ export function Sidebar({ onClose }: SidebarProps) {
 
   return (
     <motion.div
+      ref={rootRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menu de navegação"
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
@@ -157,7 +180,7 @@ export function Sidebar({ onClose }: SidebarProps) {
             x: 10,
           }}
         >
-          karaguaecotech@gmail.com
+          {SITE_EMAIL}
         </motion.span>
         <motion.span
           className="inline-block text-white mix-blend-difference"

@@ -10,7 +10,13 @@ export type PontoInteresse = {
   created_at: string;
 };
 
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL as string,
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-);
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error(
+    "Supabase client requires VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY at build time",
+  );
+}
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
