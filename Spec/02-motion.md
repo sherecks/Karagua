@@ -123,3 +123,26 @@ para não transformar a home num carrossel de scroll.
 - [ ] Nenhum `transition`/`animation` em `width`, `height`, `padding`, `margin`.
 - [ ] Durations entre 150 e 300ms (scrub usa progresso, não duration).
 - [ ] Easings só ease-out-quart/expo/quint.
+
+## 7. Transição de superfície (tema por scroll) — emenda 2026-07-06 (DT4)
+
+Decisão do dono (PRD v2, tabela DT): inversão **binária** de tema entre seções,
+mecânica Basic Agency.
+
+1. A cor de fundo/texto da página é propriedade de um **wrapper único**; seções
+   declaram `data-theme="light" | "dark"`, nunca cor hardcoded.
+2. Gatilho: a seção que contém a **linha central do viewport** define o tema
+   (IntersectionObserver com `rootMargin: "-50% 0% -50% 0%"`). O swap é
+   discreto; a suavização é 100% CSS:
+   `transition: background-color .65s cubic-bezier(.72,0,.28,1), color .65s ...`.
+3. Header, ScrollRail e `::selection` consomem as **mesmas variáveis** com o
+   mesmo timing (sincronia por token, não por JS coordenado). Proibido
+   `mix-blend-mode: difference` no header.
+4. Interpolação contínua (scrub) de cor: exceção, máximo 2 costuras por página,
+   registradas aqui.
+5. Sob `prefers-reduced-motion`: a troca de tema **permanece** (é informação
+   semântica), instantânea.
+6. **Revoga o scroll-fade global do `Section`** (opacity/y por scroll em toda
+   seção): incompatível com a transição de superfície e nunca especificado.
+7. Exceção de duração nomeada: a transição de superfície usa **650 ms** (fora da
+   régua de 150-300 ms do checklist §6, que segue valendo para microinterações).

@@ -1,23 +1,32 @@
 import { Footer } from "@/components/footer";
-import { CarbonoAzul } from "@/components/lp/carbono-azul";
 import { CtaFinal } from "@/components/lp/cta-final";
-import { Hero } from "@/components/lp/hero";
+import { Diferencial } from "@/components/lp/diferencial";
+import { Equipe } from "@/components/lp/equipe";
+import { HeroV3 } from "@/components/lp/hero-v3";
+import { ImpactoComunidade } from "@/components/lp/impacto-comunidade";
 import { KaraguaVivo } from "@/components/lp/karagua-vivo";
-import { MethodologyBlock } from "@/components/lp/methodology-block";
-import { Pillars } from "@/components/lp/pillars";
+import { LaboratorioCta } from "@/components/lp/laboratorio-cta";
+import { Marquee } from "@/components/lp/marquee";
+import { Pioneirismo } from "@/components/lp/pioneirismo";
+// Portas ("Como engajar") fora da home a pedido do dono; componente preservado
+// em @/components/lp/portas para reuso futuro.
 import { Problema } from "@/components/lp/problema";
 import { ScrollRail } from "@/components/scroll-rail";
 import { MotionConfig } from "motion/react";
 
 import { Cursor } from "@/components/cursor";
-import { ProtectedRoute } from "@/components/protected-route";
 import { SiteHeader } from "@/components/site-header";
 import { AnimatePresence } from "motion/react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import { Loader, LOADER_SESSION_TOTAL_MS } from "./components/loader";
+import { useScrollTheme } from "@/lib/use-scroll-theme";
 
 // Lazy: tira o Leaflet/MapPage do bundle inicial da home (achado P2 do audit).
+// ProtectedRoute idem: é o único caminho que puxaria o client Supabase pra home.
+const ProtectedRoute = lazy(() =>
+  import("@/components/protected-route").then((m) => ({ default: m.ProtectedRoute })),
+);
 const MapPage = lazy(() => import("@/pages/MapPage").then((m) => ({ default: m.MapPage })));
 const AdminPage = lazy(() => import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })));
@@ -25,44 +34,54 @@ const LaboratorioPage = lazy(() =>
   import("@/pages/LaboratorioPage").then((m) => ({ default: m.LaboratorioPage })),
 );
 
+/**
+ * Home — site institucional multi-página (tom startup). Claim-mestre:
+ * pioneirismo + diferencial tecnologia & comunidade. Dupla+ audiência (público,
+ * comunidade, município, investidor). Escopo `.v2-surface` aplica contraste AA e
+ * touch 44px. Estrutura: hero → problema → diferencial → modelo → impacto &
+ * comunidade → equipe → pioneirismo → portas → contato.
+ */
+/** Loader toca em todo carregamento; só é pulado sob reduced-motion (RF09). */
+function shouldShowLoader(): boolean {
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function LandingPage() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(shouldShowLoader);
+  const themeRef = useRef<HTMLDivElement>(null);
+  useScrollTheme(themeRef);
 
   useEffect(() => {
+    if (!loading) return;
     const t = window.setTimeout(() => setLoading(false), LOADER_SESSION_TOTAL_MS);
     return () => clearTimeout(t);
-  }, []);
+  }, [loading]);
 
   return (
-    <>
+    <div className="v2-surface">
       <AnimatePresence>{loading && <Loader />}</AnimatePresence>
-      <div className="min-h-screen bg-muted">
+      {/* Dono único da superfície: nasce claro; a inversão acontece nas costuras
+          entre seções que declaram data-section-theme (Spec/02 §7). */}
+      <div ref={themeRef} data-theme="light" className="theme-surface min-h-screen">
         {!loading && <ScrollRail />}
 
         <SiteHeader />
 
         <main>
           <Cursor />
-          <Hero />
+          <HeroV3 />
           <Problema />
+          <Diferencial />
           <KaraguaVivo />
-          <Pillars />
-          <MethodologyBlock />
-          <CarbonoAzul />
+          <ImpactoComunidade />
+          <Equipe />
+          <Pioneirismo />
+          <Marquee />
+          <LaboratorioCta />
           <CtaFinal />
         </main>
         <Footer />
       </div>
-    </>
-  );
-}
-
-// Versão pós-audit: a home dentro do escopo `.v2-surface` (contraste AA, touch
-// 44px, DataPoint sem overflow). Fork "só o que muda" via CSS escopado.
-function PosAudit() {
-  return (
-    <div className="v2-surface">
-      <LandingPage />
     </div>
   );
 }
@@ -90,11 +109,11 @@ export function App() {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
-              <Suspense fallback={null}>
+            <Suspense fallback={null}>
+              <ProtectedRoute>
                 <AdminPage />
-              </Suspense>
-            </ProtectedRoute>
+              </ProtectedRoute>
+            </Suspense>
           }
         />
         <Route
@@ -105,7 +124,6 @@ export function App() {
             </Suspense>
           }
         />
-        <Route path="/v2" element={<PosAudit />} />
         <Route path="*" element={<LandingPage />} />
       </Routes>
     </MotionConfig>

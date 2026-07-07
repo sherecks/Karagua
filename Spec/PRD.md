@@ -1,6 +1,10 @@
 # PRD — Redesign "Amplo & Blocado" da Landing Karaguá
 
-> **Status:** Draft para aprovação · **Versão:** 1.0 · **Data:** 2026-05-25
+> **⚠️ SUPERSEDIDO em 2026-07-06 pelo `Spec/PRD-v2.md`** (decisão DT1: a narrativa
+> V3 em produção é a fonte de verdade; ver tabela de decisões travadas no v2).
+> Este documento fica como registro histórico; não guia mais implementação.
+
+> **Status:** Superseded · **Versão:** 1.0 · **Data:** 2026-05-25
 > **Owner de design:** skill `impeccable` (register: brand)
 > **Repo alvo:** `Karagua/` · **Fonte de conteúdo:** `karagua-context/context/`
 

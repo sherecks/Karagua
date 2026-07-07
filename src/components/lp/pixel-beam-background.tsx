@@ -12,7 +12,8 @@ type PixelBeamBackgroundProps = {
   logoSrc: string;
 };
 
-const BG_COLOR = "#ebe8e2";
+// Canvas transparente: a superfície por trás é do wrapper `.theme-surface`
+// (Spec/02 §7), então o hero inverte junto com o tema sem repintar o canvas.
 const DOT_COLOR = "#c7d926";
 
 const CELL_SIZE = 6;
@@ -45,6 +46,8 @@ export function PixelBeamBackground({ logoSrc }: PixelBeamBackgroundProps) {
     if (!ctx) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Sob reduced-motion: logo estática revelada, sem partículas nem RAF.
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let cols = 0;
     let rows = 0;
@@ -211,16 +214,12 @@ export function PixelBeamBackground({ logoSrc }: PixelBeamBackgroundProps) {
     }
 
     let rafId = 0;
-    function render() {
-      applyMouseReveal();
-      updateParticleList(particles, true);
-      emitMouseParticles();
-      updateParticleList(mouseParticles, false);
+    let running = false;
 
+    function drawFrame() {
       const vw = container!.clientWidth;
       const vh = container!.clientHeight;
-      ctx!.fillStyle = BG_COLOR;
-      ctx!.fillRect(0, 0, vw, vh);
+      ctx!.clearRect(0, 0, vw, vh);
       ctx!.fillStyle = DOT_COLOR;
 
       for (let yi = 0; yi < rows; yi++) {
@@ -242,8 +241,22 @@ export function PixelBeamBackground({ logoSrc }: PixelBeamBackgroundProps) {
       for (const p of particles) ctx!.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
       for (const p of mouseParticles)
         ctx!.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
 
-      rafId = requestAnimationFrame(render);
+    function render() {
+      applyMouseReveal();
+      updateParticleList(particles, true);
+      emitMouseParticles();
+      updateParticleList(mouseParticles, false);
+      drawFrame();
+      if (running) rafId = requestAnimationFrame(render);
+    }
+
+    /** Estado final estático: toda a logo visível, sem animação. */
+    function revealAll() {
+      for (let i = 0; i < logoRevealed.length; i++) {
+        if (logoIsCell[i]) logoRevealed[i] = 1;
+      }
     }
 
     function handleMouseMove(e: MouseEvent) {
@@ -259,21 +272,55 @@ export function PixelBeamBackground({ logoSrc }: PixelBeamBackgroundProps) {
     logoImg.onload = () => {
       logoReady = true;
       buildGrid();
+      if (reduceMotion) {
+        revealAll();
+        drawFrame();
+      }
     };
     logoImg.src = logoSrc;
 
-    const resizeObserver = new ResizeObserver(() => resize());
+    const resizeObserver = new ResizeObserver(() => {
+      resize();
+      if (reduceMotion) {
+        revealAll();
+        drawFrame();
+      }
+    });
     resizeObserver.observe(container);
 
-    container!.addEventListener("mousemove", handleMouseMove);
-    container!.addEventListener("mouseleave", handleMouseLeave);
+    // Pausa o RAF fora do viewport: canvas do hero não compete com o resto da página.
+    const io = new IntersectionObserver(([entry]) => {
+      const visible = entry?.isIntersecting ?? false;
+      if (reduceMotion) return;
+      if (visible && !running) {
+        running = true;
+        rafId = requestAnimationFrame(render);
+      } else if (!visible && running) {
+        running = false;
+        cancelAnimationFrame(rafId);
+      }
+    });
+    io.observe(container);
+
+    if (!reduceMotion) {
+      container!.addEventListener("mousemove", handleMouseMove);
+      container!.addEventListener("mouseleave", handleMouseLeave);
+    }
 
     resize();
-    initParticles();
-    rafId = requestAnimationFrame(render);
+    if (reduceMotion) {
+      revealAll();
+      drawFrame();
+    } else {
+      initParticles();
+      running = true;
+      rafId = requestAnimationFrame(render);
+    }
 
     return () => {
+      running = false;
       cancelAnimationFrame(rafId);
+      io.disconnect();
       resizeObserver.disconnect();
       container!.removeEventListener("mousemove", handleMouseMove);
       container!.removeEventListener("mouseleave", handleMouseLeave);

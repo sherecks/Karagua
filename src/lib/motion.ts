@@ -48,6 +48,29 @@ export const maskRise: Variants = {
 };
 
 /**
+ * Wipe por clip-path (esquerda → direita). Revelação de fechamento, distinta do
+ * maskRise: o texto é "limpo" para dentro em vez de subir. Usada nos títulos de
+ * CTA. Honra reduced-motion via <MotionConfig> (clip não é transform, mas o
+ * fallback global mantém o conteúdo legível).
+ */
+export const clipWipe: Variants = {
+  hidden: { clipPath: "inset(0 100% 0 0)" },
+  visible: {
+    clipPath: "inset(0 0% 0 0)",
+    transition: { duration: 0.9, ease: EASE_OUT_EXPO },
+  },
+};
+
+/** Sublinhado que se desenha da esquerda (scaleX origin-left). Micro-interação. */
+export const underlineDraw: Variants = {
+  hidden: { scaleX: 0 },
+  visible: {
+    scaleX: 1,
+    transition: { duration: 0.7, ease: EASE_OUT_QUART, delay: 0.5 },
+  },
+};
+
+/**
  * Reveal-on-scroll calmo. A `margin` negativa na base do viewport puxa a linha
  * de disparo para cima: o reveal só acontece quando o elemento já está
  * confortavelmente em tela (não na borda inferior), o que evita a sensação de

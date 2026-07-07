@@ -149,6 +149,43 @@
   --sidebar-ring: var(--k-color-green-karagua);
 }
 
+/* ───────────────────────────────────────────────────────────────────────────
+   Transição de superfície entre seções (Spec/02 §7 · DT4: tema binário).
+   O wrapper `.theme-surface` é o único dono da cor da página; as seções
+   declaram `data-section-theme="light|dark"` e um IntersectionObserver na
+   linha central do viewport troca `data-theme` no wrapper. A suavização é
+   100% CSS; sob reduced-motion a troca permanece, instantânea.
+   ─────────────────────────────────────────────────────────────────────────── */
+.theme-surface {
+  --surface: var(--k-color-surface-shell);
+  --ink: var(--k-color-text-primary);
+  background-color: var(--surface);
+  color: var(--ink);
+  transition:
+    background-color 0.65s cubic-bezier(0.72, 0, 0.28, 1),
+    color 0.65s cubic-bezier(0.72, 0, 0.28, 1);
+}
+.theme-surface[data-theme="dark"] {
+  --surface: var(--k-color-surface-carbon);
+  --ink: var(--k-color-surface-shell);
+}
+.theme-surface ::selection {
+  background: var(--ink);
+  color: var(--surface);
+}
+/* Logo (SVG via <img>) não herda cor: inverte por filter, no mesmo timing. */
+.site-logo {
+  transition: filter 0.65s cubic-bezier(0.72, 0, 0.28, 1);
+}
+.theme-surface[data-theme="dark"] .site-logo {
+  filter: brightness(0) invert(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-surface {
+    transition-duration: 0.01s;
+  }
+}
+
 @theme inline {
   /* Two families only. Hierarchy = weight contrast (Thin <-> Bold). */
   --font-sans: "Aileron", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;

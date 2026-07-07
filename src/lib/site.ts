@@ -10,4 +10,4 @@ export const SITE_DESCRIPTION =
 
 export const SITE_LOCALE = "pt_BR";
 
-export const SITE_EMAIL = "karaguaecotech@gmail.com";
+export const SITE_EMAIL = "contato@karagua.com.br";

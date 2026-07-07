@@ -27,10 +27,11 @@ const LOGO_PATHS: string[] = [
 const PATH_COUNT = LOGO_PATHS.length;
 const SYMBOL_PATHS_COUNT = 7;
 
-const PATH_DRAW_DURATION_S = 1.4;
-const PATH_STAGGER_S = 0.06;
-const FILL_DURATION_S = 0.5;
-const FILL_OFFSET_S = 0.45;
+// Timings comprimidos para fechar o loader em ≤1,5 s (RF11 do PRD v2).
+const PATH_DRAW_DURATION_S = 0.7;
+const PATH_STAGGER_S = 0.03;
+const FILL_DURATION_S = 0.35;
+const FILL_OFFSET_S = 0.25;
 
 /** Última animação termina em: stagger total + max(draw, offset+fill). */
 const LAST_PATH_DELAY_S = (PATH_COUNT - 1) * PATH_STAGGER_S;
@@ -42,7 +43,7 @@ export const LOADER_TEXT_PHASE_END_MS = Math.ceil(LAST_PATH_END_S * 1000);
 const TEXT_PHASE_S = LOADER_TEXT_PHASE_END_MS / 1000;
 
 /** Leitura do mapa antes de fechar o overlay. */
-const LOADER_HOLD_AFTER_TOPO_S = 0.85;
+const LOADER_HOLD_AFTER_TOPO_S = 0.3;
 
 export const LOADER_SESSION_TOTAL_MS =
   LOADER_TEXT_PHASE_END_MS + Math.round(LOADER_HOLD_AFTER_TOPO_S * 1000);

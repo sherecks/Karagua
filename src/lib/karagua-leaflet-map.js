@@ -70,7 +70,9 @@ class KaraguaLeafletMap extends HTMLElement {
 
   _render() {
     this.shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
+        crossorigin="anonymous" />
       <style>
         @font-face {
           font-family: 'Aileron';
@@ -328,7 +330,10 @@ class KaraguaLeafletMap extends HTMLElement {
     } else {
       const script = document.createElement("script");
       script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.integrity = "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH";
+      script.crossOrigin = "anonymous";
       script.onload = () => this._initMap();
+      script.onerror = () => console.error("Falha ao carregar Leaflet do CDN");
       document.head.appendChild(script);
     }
   }
@@ -363,11 +368,10 @@ class KaraguaLeafletMap extends HTMLElement {
   }
 
   _loadGeoJSONFiles() {
+    // Apenas arquivos que existem em public/ (mangue/map.geojson davam 404 em todo load).
     const defaults = [
-      { file: "mapUC.geojson", color: "#4E8748" },
+      { file: "mapuc.geojson", color: "#4E8748" },
       { file: "costeira.geojson", color: "#4E8748" },
-      { file: "mangue.geojson", color: "#4E8748" },
-      { file: "map.geojson", color: "#0062ff", fillColor: "#8fc9ff", fillOpacity: 0.01 },
     ];
 
     const filesToLoad =
@@ -498,19 +502,24 @@ class KaraguaLeafletMap extends HTMLElement {
       return;
     }
     const tipos = ["monitoramento", "flora", "fauna"];
-    scroll.innerHTML = tipos
-      .map((tipo) => {
-        const grupo = points.filter((p) => p.tipo === tipo);
-        if (!grupo.length) return "";
-        const items = grupo
-          .map(
-            (p) =>
-              `<div class="point-item" data-id="${p.id}" title="${p.dados || p.nome}">${p.nome}</div>`,
-          )
-          .join("");
-        return `<span class="points-group-label ${tipo}">${tipo}</span>${items}`;
-      })
-      .join("");
+    // Nome/dados vêm do Supabase: montar via DOM (textContent) para não interpretar HTML.
+    scroll.textContent = "";
+    tipos.forEach((tipo) => {
+      const grupo = points.filter((p) => p.tipo === tipo);
+      if (!grupo.length) return;
+      const label = document.createElement("span");
+      label.className = `points-group-label ${tipo}`;
+      label.textContent = tipo;
+      scroll.appendChild(label);
+      grupo.forEach((p) => {
+        const item = document.createElement("div");
+        item.className = "point-item";
+        item.dataset.id = p.id;
+        item.title = p.dados || p.nome;
+        item.textContent = p.nome;
+        scroll.appendChild(item);
+      });
+    });
 
     scroll.querySelectorAll(".point-item").forEach((el) => {
       el.addEventListener("click", () => {
@@ -567,15 +576,24 @@ class KaraguaLeafletMap extends HTMLElement {
       console.warn("Open-Meteo indisponível:", e);
     }
 
-    try {
-      const res = await fetch(
-        `https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lng}&start=${new Date().toISOString()}&end=${new Date(Date.now() + 86400000).toISOString()}`,
-        { headers: { Authorization: import.meta.env.VITE_STORMGLASS_KEY } },
-      );
-      const data = await res.json();
-      if (data.data) tideExtremes = data.data;
-    } catch (e) {
-      console.warn("Stormglass indisponível:", e);
+    // Maré via Edge Function (a chave Stormglass é secret server-side, nunca no bundle).
+    // Sem Supabase configurado a seção de maré é simplesmente omitida.
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (supabaseUrl && !supabaseUrl.includes("example.supabase.co")) {
+      try {
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/tide-extremes?lat=${lat}&lng=${lng}`,
+          { headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` } },
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.data) tideExtremes = data.data;
+        } else {
+          console.warn("tide-extremes respondeu", res.status);
+        }
+      } catch (e) {
+        console.warn("Maré indisponível:", e);
+      }
     }
 
     panel.classList.remove("loading");
