@@ -19,7 +19,6 @@ type Pin = {
 };
 
 const GREEN_BRIGHT = "#c7d926";
-const SURFACE_FOG = "#ebe8e2";
 const TEXT_PRIMARY = "#2c3e50";
 const TEXT_SOFT = "#6b7b8d";
 const BORDER = "#e2dfd6";
@@ -419,8 +418,7 @@ export function ValueMapBackground() {
       t += 1;
       const time = t * 0.02;
 
-      ctx!.fillStyle = SURFACE_FOG;
-      ctx!.fillRect(0, 0, vw, vh);
+      ctx!.clearRect(0, 0, vw, vh);
 
       drawTerrain(time);
       drawBars(time);
