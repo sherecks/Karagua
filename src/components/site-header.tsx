@@ -16,6 +16,7 @@ export function SiteHeader() {
   const [isOpen, setIsOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [goingDown, setGoingDown] = useState(false);
   const { pathname } = useLocation();
   const isHome = pathname === "/" || pathname === "/v2";
 
@@ -24,9 +25,13 @@ export function SiteHeader() {
     const onScroll = () => {
       const y = window.scrollY;
       setScrolled(y > 8);
-      // Só recolhe descendo e bem abaixo do topo; subir revela na hora.
-      if (y > last && y > 140) setHidden(true);
-      else if (y < last) setHidden(false);
+      if (y > last) {
+        setGoingDown(true);
+        if (y > 140) setHidden(true);
+      } else if (y < last) {
+        setGoingDown(false);
+        setHidden(false);
+      }
       last = y;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -43,7 +48,7 @@ export function SiteHeader() {
         aria-label="Navegação principal"
         className={`sticky top-0 z-100 mx-auto flex w-full flex-row items-center justify-between px-4 py-4 transition-[transform,background-color,backdrop-filter] duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] md:px-8 ${
           collapsed ? "-translate-y-full" : "translate-y-0"
-        } ${scrolled && !collapsed ? "bg-(--surface)/70 backdrop-blur-md" : "bg-transparent"}`}
+        } ${scrolled && !collapsed && goingDown ? "bg-(--surface)/70 backdrop-blur-md" : "bg-transparent"}`}
       >
         {isHome ? (
           <a href="#topo" style={{ viewTransitionName: "brand-mark" }}>
