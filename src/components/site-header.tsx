@@ -19,7 +19,7 @@ export function SiteHeader() {
 
       <nav
         aria-label="Navegação principal"
-        className="sticky top-0 z-100 mx-auto flex w-full flex-row items-center justify-between px-4 py-4 md:px-8"
+        className="relative z-100 mx-auto flex w-full flex-row items-center justify-between px-4 py-4 md:px-8"
       >
         {isHome ? (
           <a href="#topo" style={{ viewTransitionName: "brand-mark" }}>

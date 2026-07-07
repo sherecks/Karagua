@@ -15,7 +15,6 @@ type Pin = {
   sub: string;
   shape: Shape;
   fill: string;
-  mono: boolean;
 };
 
 const GREEN_BRIGHT = "#c7d926";
@@ -23,7 +22,6 @@ const TEXT_PRIMARY = "#2c3e50";
 const TEXT_SOFT = "#6b7b8d";
 const BORDER = "#e2dfd6";
 
-const FONT_SANS = "'Aileron', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace";
 
 const ISO_COS = Math.cos(Math.PI / 6);
@@ -42,7 +40,6 @@ const PINS: Pin[] = [
     sub: "HUB DO PROJETO",
     shape: null,
     fill: GREEN_BRIGHT,
-    mono: false,
   },
   {
     id: "mercado",
@@ -54,7 +51,6 @@ const PINS: Pin[] = [
     sub: "MERCADO DE CARBONO · 2030",
     shape: "ring",
     fill: GREEN_BRIGHT,
-    mono: true,
   },
   {
     id: "receita",
@@ -66,7 +62,6 @@ const PINS: Pin[] = [
     sub: "RECEITA ESTIMADA · PILOTO",
     shape: "ring",
     fill: GREEN_BRIGHT,
-    mono: true,
   },
   {
     id: "babitonga",
@@ -78,7 +73,6 @@ const PINS: Pin[] = [
     sub: "",
     shape: "circle",
     fill: GREEN_BRIGHT,
-    mono: false,
   },
   {
     id: "barra-sul",
@@ -90,7 +84,6 @@ const PINS: Pin[] = [
     sub: "",
     shape: "circle",
     fill: GREEN_BRIGHT,
-    mono: false,
   },
   {
     id: "potencial",
@@ -102,7 +95,6 @@ const PINS: Pin[] = [
     sub: "BABITONGA",
     shape: "circle",
     fill: GREEN_BRIGHT,
-    mono: true,
   },
   {
     id: "familias",
@@ -114,7 +106,6 @@ const PINS: Pin[] = [
     sub: "IMPACTADAS",
     shape: "circle",
     fill: GREEN_BRIGHT,
-    mono: true,
   },
   {
     id: "lei",
@@ -126,7 +117,6 @@ const PINS: Pin[] = [
     sub: "MERCADO REGULADO DE CARBONO",
     shape: "ring",
     fill: GREEN_BRIGHT,
-    mono: true,
   },
   {
     id: "verra",
@@ -138,7 +128,6 @@ const PINS: Pin[] = [
     sub: "",
     shape: "ring",
     fill: GREEN_BRIGHT,
-    mono: true,
   },
 ];
 
@@ -372,10 +361,10 @@ export function ValueMapBackground() {
 
       ctx!.textAlign = "center";
       ctx!.fillStyle = TEXT_PRIMARY;
-      ctx!.font = `600 ${18 * scaleF}px ${p.mono ? FONT_MONO : FONT_SANS}`;
+      ctx!.font = `600 ${18 * scaleF}px ${FONT_MONO}`;
       ctx!.fillText(p.label, top.x, top.y - r - 22 * scaleF);
       ctx!.fillStyle = TEXT_SOFT;
-      ctx!.font = `400 ${12 * scaleF}px ${FONT_SANS}`;
+      ctx!.font = `400 ${12 * scaleF}px ${FONT_MONO}`;
       ctx!.fillText(p.sub, top.x, top.y - r - 9 * scaleF);
 
       return top;
