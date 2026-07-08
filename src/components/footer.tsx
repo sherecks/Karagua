@@ -63,9 +63,8 @@ export function Footer() {
       {/* Wordmark gigante cortado (mask), fechamento de marca da página. */}
       <div
         aria-hidden="true"
-        className="h-[clamp(4rem,24vw,20rem)] w-full bg-[#828e1a]"
+        className="-mt-2 h-[24vw] w-full bg-[#828e1a] sm:-mt-6"
         style={{
-          marginTop: "calc(-1 * clamp(2rem, 12vw, 10rem))",
           maskImage: "url(/logo-2.svg)",
           maskRepeat: "no-repeat",
           maskPosition: "center top",
