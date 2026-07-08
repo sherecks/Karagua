@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import "@/lib/karagua-leaflet-map.js";
-import { supabase } from "@/lib/supabase";
+import { listPontos } from "@/lib/api";
 
 export function MapPage() {
   const mapRef = useRef<HTMLElement>(null);
@@ -18,12 +18,9 @@ export function MapPage() {
     if (!mapEl) return;
 
     async function loadPoints() {
-      const { data, error } = await supabase
-        .from("pontos_interesse")
-        .select("*")
-        .order("created_at", { ascending: true });
+      const { data, error } = await listPontos("asc");
       if (error) {
-        console.error("Supabase:", error);
+        console.error("Karaguá API:", error.message);
         return;
       }
       if (data) (mapEl as any).setPoints(data);

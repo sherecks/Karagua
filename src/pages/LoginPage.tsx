@@ -5,7 +5,7 @@ import { Equal, X } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
 import { EASE_OUT_QUART } from "@/lib/motion";
 import { startViewTransition } from "@/lib/view-transition";
-import { supabase } from "@/lib/supabase";
+import { login } from "@/lib/api";
 
 const iconTransition = { duration: 0.25, ease: EASE_OUT_QUART } as const;
 
@@ -21,7 +21,7 @@ export function LoginPage() {
     e.preventDefault();
     setErro("");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await login(email, password);
     setLoading(false);
     if (error) {
       setErro("Email ou senha incorretos.");

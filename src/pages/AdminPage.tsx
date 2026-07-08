@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase, type PontoInteresse } from "@/lib/supabase";
+import {
+  createPonto,
+  deletePonto,
+  listPontos,
+  logout,
+  updatePonto,
+  type PontoInteresse,
+} from "@/lib/api";
 
 const TIPOS = ["monitoramento", "flora", "fauna"] as const;
 type Tipo = (typeof TIPOS)[number];
@@ -39,10 +46,7 @@ export function AdminPage() {
   const [erroEdit, setErroEdit] = useState("");
 
   async function fetchPontos() {
-    const { data, error } = await supabase
-      .from("pontos_interesse")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await listPontos("desc");
     if (error) {
       setErro(`Falha ao carregar pontos: ${error.message}`);
       return;
@@ -71,7 +75,7 @@ export function AdminPage() {
       dados: form.dados,
       tipo: form.tipo,
     };
-    const { error } = await supabase.from("pontos_interesse").insert(payload);
+    const { error } = await createPonto(payload);
     setSaving(false);
     if (error) {
       setErro(error.message);
@@ -83,7 +87,7 @@ export function AdminPage() {
 
   async function handleDelete(id: string) {
     if (!window.confirm("Excluir este ponto? A ação não pode ser desfeita.")) return;
-    const { error } = await supabase.from("pontos_interesse").delete().eq("id", id);
+    const { error } = await deletePonto(id);
     if (error) {
       setErro(`Falha ao excluir: ${error.message}`);
       return;
@@ -114,16 +118,13 @@ export function AdminPage() {
       return;
     }
     setSavingEdit(true);
-    const { error } = await supabase
-      .from("pontos_interesse")
-      .update({
-        nome: editing.nome,
-        latitude: lat,
-        longitude: lng,
-        dados: editing.dados,
-        tipo: editing.tipo,
-      })
-      .eq("id", editing.id);
+    const { error } = await updatePonto(editing.id, {
+      nome: editing.nome,
+      latitude: lat,
+      longitude: lng,
+      dados: editing.dados,
+      tipo: editing.tipo,
+    });
     setSavingEdit(false);
     if (error) {
       setErroEdit(error.message);
@@ -155,8 +156,8 @@ export function AdminPage() {
             Ver mapa →
           </Link>
           <button
-            onClick={async () => {
-              await supabase.auth.signOut();
+            onClick={() => {
+              logout();
               void navigate("/login");
             }}
             className="text-sm text-k-ink-soft hover:text-k-coral transition-colors py-2 px-1 min-h-[44px] inline-flex items-center"

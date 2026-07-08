@@ -23,7 +23,6 @@ import { Loader, LOADER_SESSION_TOTAL_MS } from "./components/loader";
 import { useScrollTheme } from "@/lib/use-scroll-theme";
 
 // Lazy: tira o Leaflet/MapPage do bundle inicial da home (achado P2 do audit).
-// ProtectedRoute idem: é o único caminho que puxaria o client Supabase pra home.
 const ProtectedRoute = lazy(() =>
   import("@/components/protected-route").then((m) => ({ default: m.ProtectedRoute })),
 );

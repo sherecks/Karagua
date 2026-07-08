@@ -502,7 +502,7 @@ class KaraguaLeafletMap extends HTMLElement {
       return;
     }
     const tipos = ["monitoramento", "flora", "fauna"];
-    // Nome/dados vêm do Supabase: montar via DOM (textContent) para não interpretar HTML.
+    // Nome/dados vêm da API: montar via DOM (textContent) para não interpretar HTML.
     scroll.textContent = "";
     tipos.forEach((tipo) => {
       const grupo = points.filter((p) => p.tipo === tipo);
@@ -576,15 +576,12 @@ class KaraguaLeafletMap extends HTMLElement {
       console.warn("Open-Meteo indisponível:", e);
     }
 
-    // Maré via Edge Function (a chave Stormglass é secret server-side, nunca no bundle).
-    // Sem Supabase configurado a seção de maré é simplesmente omitida.
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes("example.supabase.co")) {
+    // Maré via Karaguá API (a chave Stormglass é secret server-side, nunca no bundle).
+    // Sem API configurada a seção de maré é simplesmente omitida.
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
       try {
-        const res = await fetch(
-          `${supabaseUrl}/functions/v1/tide-extremes?lat=${lat}&lng=${lng}`,
-          { headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` } },
-        );
+        const res = await fetch(`${apiUrl.replace(/\/$/, "")}/tide-extremes?lat=${lat}&lng=${lng}`);
         if (res.ok) {
           const data = await res.json();
           if (data.data) tideExtremes = data.data;
