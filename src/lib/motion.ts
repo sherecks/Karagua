@@ -79,5 +79,5 @@ export const underlineDraw: Variants = {
 export const reveal = {
   initial: "hidden",
   whileInView: "visible",
-  viewport: { once: true, amount: 0.35, margin: "0px 0px -18% 0px" },
+  viewport: { once: true, amount: 0.15 },
 } as const;
