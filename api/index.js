@@ -1,6 +1,6 @@
 // Karaguá API — Express + Postgres (Railway) + JWT de admin único.
-// Substitui o Supabase: CRUD de pontos_interesse, login do admin e o proxy
-// da Stormglass (a chave paga fica server-side, fora do bundle do site).
+// Substitui o Supabase: CRUD de pontos_interesse, login do admin e a maré
+// via Open-Meteo Marine (dados Copernicus, sem chave).
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
@@ -11,7 +11,6 @@ const {
   JWT_SECRET,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
-  STORMGLASS_KEY,
   CORS_ORIGIN,
   PORT = 4000,
 } = process.env;
@@ -163,14 +162,34 @@ app.delete("/pontos/:id", requireAuth, async (req, res) => {
   }
 });
 
-// ── Maré (proxy Stormglass, substitui a edge function tide-extremes) ────────
-// Cache em memória de 30 min por coordenada arredondada: a cota gratuita da
-// Stormglass é pequena, então cada posição só bate no upstream 48x/dia.
+// ── Maré (Open-Meteo Marine — nível do mar com maré, origem Copernicus) ─────
+// Sem chave e sem cota relevante. Os extremos (alta/baixa) são calculados aqui
+// a partir da série horária de sea_level_height_msl: máximos/mínimos locais,
+// com o horário/altura afinados pelo vértice da parábola dos 3 pontos vizinhos.
+// Datum = nível médio do mar (MSL), não LAT de carta náutica.
 const tideCache = new Map();
 const TIDE_TTL_MS = 30 * 60 * 1000;
 
+function extremesFromHourlySeries(times, heights) {
+  const out = [];
+  for (let i = 1; i < heights.length - 1; i++) {
+    const [prev, cur, next] = [heights[i - 1], heights[i], heights[i + 1]];
+    if (typeof prev !== "number" || typeof cur !== "number" || typeof next !== "number") continue;
+    const isHigh = cur > prev && cur >= next;
+    const isLow = cur < prev && cur <= next;
+    if (!isHigh && !isLow) continue;
+    const denom = prev - 2 * cur + next;
+    const offset = denom === 0 ? 0 : (0.5 * (prev - next)) / denom;
+    out.push({
+      time: new Date((times[i] + offset * 3600) * 1000).toISOString(),
+      height: Number((cur - 0.25 * (prev - next) * offset).toFixed(2)),
+      type: isHigh ? "high" : "low",
+    });
+  }
+  return out;
+}
+
 app.get("/tide-extremes", async (req, res) => {
-  if (!STORMGLASS_KEY) return res.status(500).json({ error: "STORMGLASS_KEY não configurada" });
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -184,16 +203,22 @@ app.get("/tide-extremes", async (req, res) => {
   }
 
   try {
-    const start = new Date().toISOString();
-    const end = new Date(Date.now() + 86_400_000).toISOString();
     const upstream = await fetch(
-      `https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lng}&start=${start}&end=${end}`,
-      { headers: { Authorization: STORMGLASS_KEY } },
+      `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}` +
+        `&hourly=sea_level_height_msl&timeformat=unixtime&timezone=UTC&forecast_days=3`,
     );
     if (!upstream.ok)
-      return res.status(502).json({ error: `stormglass respondeu ${upstream.status}` });
+      return res.status(502).json({ error: `open-meteo respondeu ${upstream.status}` });
     const body = await upstream.json();
-    const data = body.data ?? [];
+    const times = body.hourly?.time ?? [];
+    const heights = body.hourly?.sea_level_height_msl ?? [];
+    if (!heights.some((h) => typeof h === "number")) {
+      return res.status(502).json({ error: "sem dados de maré para essas coordenadas" });
+    }
+    const nowMs = Date.now();
+    const data = extremesFromHourlySeries(times, heights)
+      .filter((e) => Date.parse(e.time) >= nowMs)
+      .slice(0, 8);
     tideCache.set(key, { at: Date.now(), data });
     res.set("Cache-Control", "public, max-age=1800").json({ data });
   } catch (e) {

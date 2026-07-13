@@ -1,8 +1,9 @@
 # Karaguá — Landing Page
 
-Single-page da **Karaguá Ecotech** ("O Estuário"): créditos de carbono azul em
+Site da **Karaguá Ecotech** ("O Estuário"): créditos de carbono azul em
 manguezais, com lastro verificável. Princípio de produto e de design: **cada
-número tem uma fonte**.
+número tem uma fonte**. Landing page + mapa de transparência + admin, servidos
+por uma API própria (ver Arquitetura).
 
 Este projeto roda sobre dois pilares que **mandam juntos**:
 
@@ -32,6 +33,34 @@ Este projeto roda sobre dois pilares que **mandam juntos**:
   Dev em `http://localhost:5173/`.
 - **React 19**, **Tailwind v4** (config no CSS), **shadcn/ui**
   (`bunx shadcn@latest add <nome> --yes`), **motion**. Alias `@/` → `src/`.
+- **API** (`api/`): Express + `pg` + JWT, Node puro (npm, não bun).
+  Dev: `npm run dev` na pasta `api/` (lê `api/.env`), porta 4000.
+
+## Arquitetura (site → API → Postgres)
+
+Sem Supabase (removido 2026-07). O browser nunca fala com o banco:
+
+| Camada   | Onde           | Papel                                                                                            |
+| -------- | -------------- | ------------------------------------------------------------------------------------------------ |
+| Site     | raiz do repo   | React SPA; todo acesso a dados via `src/lib/api.ts` (shape `{ data, error }`)                    |
+| API      | `api/index.js` | `POST /auth/login` · CRUD `/pontos` (JWT) · `GET /tide-extremes` (Open-Meteo Marine) · `/health` |
+| Postgres | Railway        | tabela `pontos_interesse` — **criada pela API no boot** (`ensureSchema`)                         |
+
+Rotas do app (`src/App.tsx`): `/` (LP), `/mapa` (web component
+`KaraguaLeafletMap`), `/login`, `/admin` (CRUD de pontos, protegido),
+`/laboratorio-karagua-vivo`.
+
+**Auth:** sem tabela de usuários. Login compara com `ADMIN_EMAIL`/`ADMIN_PASSWORD`
+(envs da API) e emite JWT (7d) guardado em `localStorage`.
+
+**Envs** — site: `VITE_API_URL` (**variável de build**; mudou = rebuild/redeploy).
+API (obrigatórias, sem elas o boot aborta): `DATABASE_URL`, `JWT_SECRET`,
+`ADMIN_EMAIL`, `ADMIN_PASSWORD`; opcionais: `STORMGLASS_KEY`, `CORS_ORIGIN`
+(exato, sem barra final), `PORT`.
+
+**Deploy (Railway):** 2 serviços do mesmo repo — site (root, `karagua.com.br`)
+e API (Root Directory `api`, `api-production-29e3.up.railway.app`) + Postgres.
+Sintoma clássico: site recebendo HTML em vez de JSON = `VITE_API_URL` errada.
 
 ## Topologia (3 repos)
 
@@ -46,10 +75,11 @@ Este projeto roda sobre dois pilares que **mandam juntos**:
 
 ## Rodar o `impeccable`
 
-1. **Contexto** (o gate `product` só passa apontando pro DS; verificado):
+1. **Contexto** (o gate `product` só passa apontando pro DS; o caminho do
+   `karagua-design-system` é **por máquina** — ajuste para o seu clone local):
 
    ```bash
-   IMPECCABLE_CONTEXT_DIR=/Users/lucasmelo/Desktop/Projetos/karagua-design-system \
+   IMPECCABLE_CONTEXT_DIR=<caminho-local-do-karagua-design-system> \
      node ~/.claude/skills/impeccable/scripts/load-context.mjs
    ```
 
@@ -74,3 +104,14 @@ Este projeto roda sobre dois pilares que **mandam juntos**:
 ## Validação
 
 Antes de concluir qualquer mudança: `bunx vp check --fix` e `bun run build`.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

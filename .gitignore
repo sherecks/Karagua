@@ -27,3 +27,5 @@ package-lock.json
 .vite-hooks
 .vscode
 /Spec
+# Grafo de conhecimento local (graphify) — não versionar
+graphify-out/

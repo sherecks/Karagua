@@ -576,7 +576,7 @@ class KaraguaLeafletMap extends HTMLElement {
       console.warn("Open-Meteo indisponível:", e);
     }
 
-    // Maré via Karaguá API (a chave Stormglass é secret server-side, nunca no bundle).
+    // Maré via Karaguá API (Open-Meteo Marine server-side, com cache).
     // Sem API configurada a seção de maré é simplesmente omitida.
     const apiUrl = import.meta.env.VITE_API_URL;
     if (apiUrl) {
