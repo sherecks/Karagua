@@ -10,6 +10,12 @@ class KaraguaLeafletMap extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._map = null;
     this._markers = [];
+    this._windLayer = null;
+    this._windField = null;
+    this._windFetchedAt = 0;
+    this._windCanvas = null;
+    this._windRaf = 0;
+    this._windParticles = null;
 
     this._centerLat = -26.39;
     this._centerLng = -48.626;
@@ -26,6 +32,7 @@ class KaraguaLeafletMap extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._stopWindAnimation();
     if (this._map) this._map.remove();
   }
 
@@ -191,6 +198,27 @@ class KaraguaLeafletMap extends HTMLElement {
           font-size: 13px;
           line-height: 2.2;
         }
+        .layer-toggle {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          line-height: 2.2;
+          cursor: pointer;
+          user-select: none;
+        }
+        .layer-toggle input {
+          accent-color: #4E8748;
+          width: 15px;
+          height: 15px;
+          cursor: pointer;
+        }
+        .wind-arrow { pointer-events: none; }
+        .wind-arrow svg {
+          display: block;
+          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+        }
+        .wind-canvas { pointer-events: none; }
         #points-section { margin-top: 0; }
         .points-group-label {
           font-size: 11px;
@@ -310,6 +338,14 @@ class KaraguaLeafletMap extends HTMLElement {
           <div class="legend-item"><img src="./images/icon/Fauna.svg" width="20"> Berçários da Fauna</div>
         </div>
         <div class="panel-divider"></div>
+        <div id="layers-section">
+          <div class="section-title">Camadas</div>
+          <label class="layer-toggle">
+            <input type="checkbox" id="wind-toggle">
+            <span>Vento</span>
+          </label>
+        </div>
+        <div class="panel-divider"></div>
         <div id="points-section">
           <div class="section-title">Pontos de interesse</div>
           <div id="points-scroll"></div>
@@ -353,10 +389,17 @@ class KaraguaLeafletMap extends HTMLElement {
       },
     ).addTo(this._map);
 
+    // Pane próprio abaixo dos marcadores e sem eventos: as setas de vento
+    // nunca bloqueiam o clique nos pontos de interesse.
+    const windPane = this._map.createPane("windPane");
+    windPane.style.zIndex = 350;
+    windPane.style.pointerEvents = "none";
+
     this._loadGeoJSONFiles();
     if (this._csvUrl) this._loadCSVData();
     void this._loadConditions();
     this._initSideToggle();
+    this._initWindToggle();
 
     this.dispatchEvent(
       new CustomEvent("map-ready", {
@@ -368,11 +411,9 @@ class KaraguaLeafletMap extends HTMLElement {
   }
 
   _loadGeoJSONFiles() {
-    // Apenas arquivos que existem em public/ (mangue/map.geojson davam 404 em todo load).
-    const defaults = [
-      { file: "mapuc.geojson", color: "#4E8748" },
-      { file: "costeira.geojson", color: "#4E8748" },
-    ];
+    // Sem overlays por padrão (mangue e UC removidos a pedido do dono); o
+    // atributo geojson-files segue funcionando para reativar camadas.
+    const defaults = [];
 
     const filesToLoad =
       this._geojsonFiles.length > 0
@@ -565,15 +606,27 @@ class KaraguaLeafletMap extends HTMLElement {
     const panel = this.shadowRoot.getElementById("cond-section");
 
     let meteo = null;
+    let marine = null;
     let tideExtremes = null;
 
     try {
       const res = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m,wind_direction_10m,precipitation&wind_speed_unit=kmh&timezone=America%2FSao_Paulo`,
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_direction_10m,precipitation&wind_speed_unit=kmh&timezone=America%2FSao_Paulo`,
       );
       meteo = await res.json();
     } catch (e) {
       console.warn("Open-Meteo indisponível:", e);
+    }
+
+    // Água e ondas via Open-Meteo Marine (mesma fonte da maré, sem chave).
+    try {
+      const res = await fetch(
+        `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature,wave_height,wave_period&timezone=America%2FSao_Paulo`,
+      );
+      const data = await res.json();
+      if (data.current) marine = data.current;
+    } catch (e) {
+      console.warn("Open-Meteo Marine indisponível:", e);
     }
 
     // Maré via Karaguá API (Open-Meteo Marine server-side, com cache).
@@ -619,18 +672,267 @@ class KaraguaLeafletMap extends HTMLElement {
          <span class="cond-value">${fmt(nextLow?.time)}${nextLow ? ` · ${nextLow.height?.toFixed(1)}m` : ""}</span>`
       : "";
 
+    const marineHtml = marine
+      ? `<span class="cond-label">Água</span>
+         <span class="cond-value">${marine.sea_surface_temperature}°C</span>
+         <span class="cond-label">Ondas</span>
+         <span class="cond-value">${marine.wave_height?.toFixed(1)} m · ${Math.round(marine.wave_period)} s</span>`
+      : "";
+
     panel.innerHTML = `
       <div class="section-title">Condições</div>
       <div class="cond-grid">
         <span class="cond-label">Temperatura</span>
         <span class="cond-value">${cur.temperature_2m}°C</span>
+        ${marineHtml}
         <span class="cond-label">Vento</span>
         <span class="cond-value">${Math.round(cur.wind_speed_10m)} km/h ${windDir}</span>
         <span class="cond-label">Chuva</span>
         <span class="cond-value">${cur.precipitation} mm</span>
+        <span class="cond-label">Umidade</span>
+        <span class="cond-value">${cur.relative_humidity_2m}%</span>
+        <span class="cond-label">Pressão</span>
+        <span class="cond-value">${Math.round(cur.surface_pressure)} hPa</span>
         ${tideHtml}
       </div>
     `;
+  }
+
+  // ── Camada de vento estilo Windy ──────────────────────────────────────────
+  // 1 chamada em lote (grade 6×5) ao Open-Meteo → campo u/v interpolado
+  // bilinearmente → partículas animadas em canvas na cor da marca, com o mapa
+  // em preto e branco enquanto a camada está ativa. Sob prefers-reduced-motion
+  // a animação é substituída por setas estáticas (Spec/02). Dados: 30 min.
+  _initWindToggle() {
+    const toggle = this.shadowRoot.getElementById("wind-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("change", () => void this._setWindVisible(toggle.checked));
+  }
+
+  async _setWindVisible(on) {
+    if (!on) {
+      this._stopWindAnimation();
+      if (this._windLayer) this._map.removeLayer(this._windLayer);
+      this._map.getPane("tilePane").style.filter = "";
+      return;
+    }
+    const STALE_MS = 30 * 60 * 1000;
+    if (!this._windField || Date.now() - this._windFetchedAt > STALE_MS) {
+      this._windField = await this._fetchWindField();
+      this._windFetchedAt = Date.now();
+      if (this._windLayer) {
+        this._map.removeLayer(this._windLayer);
+        this._windLayer = null;
+      }
+    }
+    if (!this._windField) return;
+
+    this._map.getPane("tilePane").style.filter = "grayscale(1) contrast(0.95)";
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      if (!this._windLayer) this._windLayer = this._buildWindArrows(this._windField.points);
+      this._windLayer.addTo(this._map);
+    } else {
+      this._startWindAnimation();
+    }
+  }
+
+  async _fetchWindField() {
+    const b = this._map.getBounds().pad(0.35);
+    const COLS = 6;
+    const ROWS = 5;
+    const lats = [];
+    const lngs = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        lats.push((b.getSouth() + ((r + 0.5) / ROWS) * (b.getNorth() - b.getSouth())).toFixed(4));
+        lngs.push((b.getWest() + ((c + 0.5) / COLS) * (b.getEast() - b.getWest())).toFixed(4));
+      }
+    }
+    try {
+      const res = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(",")}&longitude=${lngs.join(",")}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh`,
+      );
+      const body = await res.json();
+      const list = Array.isArray(body) ? body : [body];
+      const points = [];
+      const u = new Float32Array(COLS * ROWS);
+      const v = new Float32Array(COLS * ROWS);
+      list.forEach((loc, i) => {
+        const speed = loc.current?.wind_speed_10m;
+        const dir = loc.current?.wind_direction_10m;
+        if (typeof speed !== "number" || typeof dir !== "number") return;
+        // Direção meteorológica = de onde vem; componente u/v = para onde vai.
+        const to = ((dir + 180) % 360) * (Math.PI / 180);
+        u[i] = speed * Math.sin(to);
+        v[i] = speed * Math.cos(to);
+        points.push({ lat: Number(lats[i]), lng: Number(lngs[i]), speed, dir });
+      });
+      if (!points.length) return null;
+      return {
+        south: b.getSouth(),
+        north: b.getNorth(),
+        west: b.getWest(),
+        east: b.getEast(),
+        cols: COLS,
+        rows: ROWS,
+        u,
+        v,
+        points,
+      };
+    } catch (e) {
+      console.warn("Vento indisponível:", e);
+      return null;
+    }
+  }
+
+  /** Interpolação bilinear do campo u/v em uma coordenada geográfica. */
+  _sampleWind(lat, lng) {
+    const f = this._windField;
+    const fr = Math.min(
+      f.rows - 1,
+      Math.max(0, ((lat - f.south) / (f.north - f.south)) * f.rows - 0.5),
+    );
+    const fc = Math.min(
+      f.cols - 1,
+      Math.max(0, ((lng - f.west) / (f.east - f.west)) * f.cols - 0.5),
+    );
+    const r0 = Math.floor(fr);
+    const c0 = Math.floor(fc);
+    const r1 = Math.min(f.rows - 1, r0 + 1);
+    const c1 = Math.min(f.cols - 1, c0 + 1);
+    const tr = fr - r0;
+    const tc = fc - c0;
+    const mix = (arr) => {
+      const a = arr[r0 * f.cols + c0] * (1 - tc) + arr[r0 * f.cols + c1] * tc;
+      const bV = arr[r1 * f.cols + c0] * (1 - tc) + arr[r1 * f.cols + c1] * tc;
+      return a * (1 - tr) + bV * tr;
+    };
+    return { u: mix(f.u), v: mix(f.v) };
+  }
+
+  _startWindAnimation() {
+    if (this._windRaf) return; // já rodando
+
+    if (!this._windCanvas) {
+      const canvas = document.createElement("canvas");
+      canvas.className = "wind-canvas leaflet-zoom-hide";
+      this._map.getPane("windPane").appendChild(canvas);
+      this._windCanvas = canvas;
+      this._map.on("moveend zoomend resize", this._resizeWindCanvas, this);
+    }
+    this._resizeWindCanvas();
+
+    const size = this._map.getSize();
+    const count = Math.round(Math.min(350, Math.max(150, (size.x * size.y) / 3500)));
+    this._windParticles = Array.from({ length: count }, () => ({
+      x: Math.random() * size.x,
+      y: Math.random() * size.y,
+      age: Math.random() * 80,
+    }));
+
+    const GREEN = "#c7d926";
+    const SPEED_SCALE = 0.07; // km/h → px por frame
+    const MAX_AGE = 80;
+
+    const frame = () => {
+      const map = this._map;
+      const canvas = this._windCanvas;
+      if (!map || !canvas) return;
+      const ctx = canvas.getContext("2d");
+      const { x: w, y: h } = map.getSize();
+
+      // Fade do rastro: mantém 92% do alpha do quadro anterior.
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.92)";
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = GREEN;
+      ctx.lineWidth = 1.6;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+
+      for (const p of this._windParticles) {
+        p.age += 1;
+        if (p.age > MAX_AGE || p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
+          p.x = Math.random() * w;
+          p.y = Math.random() * h;
+          p.age = 0;
+          continue;
+        }
+        const ll = map.containerPointToLatLng([p.x, p.y]);
+        const { u, v } = this._sampleWind(ll.lat, ll.lng);
+        const nx = p.x + u * SPEED_SCALE;
+        const ny = p.y - v * SPEED_SCALE; // norte = para cima na tela
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(nx, ny);
+        p.x = nx;
+        p.y = ny;
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      this._windRaf = requestAnimationFrame(frame);
+    };
+    this._windRaf = requestAnimationFrame(frame);
+  }
+
+  _stopWindAnimation() {
+    if (this._windRaf) {
+      cancelAnimationFrame(this._windRaf);
+      this._windRaf = 0;
+    }
+    if (this._windCanvas) {
+      this._map.off("moveend zoomend resize", this._resizeWindCanvas, this);
+      this._windCanvas.remove();
+      this._windCanvas = null;
+    }
+    this._windParticles = null;
+  }
+
+  _resizeWindCanvas() {
+    const canvas = this._windCanvas;
+    if (!canvas) return;
+    const size = this._map.getSize();
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = size.x * dpr;
+    canvas.height = size.y * dpr;
+    canvas.style.width = `${size.x}px`;
+    canvas.style.height = `${size.y}px`;
+    canvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+    // O pane transforma junto com o mapa; reancora o canvas no viewport atual.
+    L.DomUtil.setPosition(canvas, this._map.containerPointToLayerPoint([0, 0]));
+  }
+
+  /** Fallback estático (prefers-reduced-motion): setas verdes fixas. */
+  _buildWindArrows(points) {
+    const group = L.layerGroup();
+    for (const p of points) {
+      const len = Math.round(Math.min(34, 16 + p.speed * 0.7));
+      const opacity = Math.min(0.9, 0.4 + p.speed / 40).toFixed(2);
+      const rot = Math.round((p.dir + 180) % 360);
+      const html = `
+        <div class="wind-arrow" style="opacity:${opacity};transform:rotate(${rot}deg)">
+          <svg width="${len}" height="${len}" viewBox="0 0 24 24" fill="none"
+               stroke="#c7d926" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="20" x2="12" y2="5"/>
+            <polyline points="6,11 12,4 18,11"/>
+          </svg>
+        </div>`;
+      group.addLayer(
+        L.marker([p.lat, p.lng], {
+          pane: "windPane",
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({
+            className: "",
+            html,
+            iconSize: [len, len],
+            iconAnchor: [len / 2, len / 2],
+          }),
+        }),
+      );
+    }
+    return group;
   }
 
   _updateMap() {
