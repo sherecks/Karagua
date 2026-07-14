@@ -205,7 +205,9 @@ export function ValueMapBackground() {
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const minSide = Math.min(vw, vh);
-      scaleF = Math.min(1.3, Math.max(0.45, minSide / 900));
+      // Piso 0.55: em telas pequenas o desenho ocupa mais do container (menos
+      // "margem" interna do auto-centramento) e os labels dos pins ficam legíveis.
+      scaleF = Math.min(1.3, Math.max(0.55, minSide / 900));
       cell = minSide * 0.034;
       terrainAmp = 13 * scaleF;
       barAmp = 75 * scaleF;
