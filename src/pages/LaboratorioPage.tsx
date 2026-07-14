@@ -1,13 +1,12 @@
 import { motion } from "motion/react";
 import { useEffect } from "react";
 import { Footer } from "@/components/footer";
-import { Parallax } from "@/components/parallax";
 import { SiteHeader } from "@/components/site-header";
 import { ScrollRevealText } from "@/components/lp/scroll-reveal-text";
 import { Section, SectionHeader } from "@/components/lp/section";
 import { clipWipe, fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
 
-const LAB_IMG_BASE = `${import.meta.env.BASE_URL}images/img4`.replace(/\/+/g, "/");
+const LAB_IMG_BASE = `${import.meta.env.BASE_URL}images/img3`.replace(/\/+/g, "/");
 const POR_QUE_IMG_BASE = `${import.meta.env.BASE_URL}images/img5`.replace(/\/+/g, "/");
 
 const cycleSteps = [
@@ -19,8 +18,8 @@ const cycleSteps = [
 
 const howItWorks = [
   {
-    lead: "12 oficinas gratuitas e abertas",
-    rest: "1 dia a cada dois meses, 72 horas/aula de formação tecnológica e cultural.",
+    lead: "6 oficinas gratuitas e abertas",
+    rest: "1 dia a cada dois meses, 36 horas/aula de formação tecnológica e cultural.",
   },
   {
     lead: "Laboratório em operação contínua",
@@ -40,7 +39,7 @@ const howItWorks = [
   },
   {
     lead: "1 documentário cultural",
-    rest: "registro contínuo dos 24 meses, disponível gratuitamente no YouTube.",
+    rest: "registro contínuo dos 12 meses, disponível gratuitamente no YouTube.",
   },
 ];
 
@@ -77,7 +76,7 @@ const legacy = [
   },
   {
     label: "A ponte",
-    text: "o Laboratório Karaguá Vivo, com seus equipamentos audiovisuais e de impressão, permanece na comunidade ao final dos 24 meses como infraestrutura cultural própria.",
+    text: "o Laboratório Karaguá Vivo, com seus equipamentos audiovisuais e de impressão, permanece na comunidade ao final dos 12 meses como infraestrutura cultural própria.",
   },
 ];
 
@@ -92,7 +91,7 @@ const fundingTable = [
   },
   {
     frente: "Formação cultural",
-    cobre: "12 oficinas, materiais didáticos e 6 bolsas de pesquisa",
+    cobre: "6 oficinas, materiais didáticos e 6 bolsas de pesquisa",
   },
   {
     frente: "Desenvolvimento de protótipo",
@@ -146,7 +145,7 @@ export function LaboratorioPage() {
           </motion.p>
 
           <motion.p variants={fadeUp} className="mt-8 text-sm text-k-ink-soft">
-            72 horas de formação gratuita · 6 bolsas de pesquisa · 1 documentário cultural
+            36 horas de formação gratuita · 6 bolsas de pesquisa · 1 documentário cultural
           </motion.p>
         </motion.div>
       </section>
@@ -155,23 +154,21 @@ export function LaboratorioPage() {
       <section id="o-que-e" className="bg-k-fog">
         <div className="grid lg:grid-cols-[38%_1fr] lg:items-stretch">
           <div className="relative min-h-[40vh] overflow-hidden md:min-h-[50vh] lg:min-h-full">
-            <Parallax amount={120} className="absolute inset-0">
-              <picture>
-                <source
-                  type="image/webp"
-                  srcSet={`${LAB_IMG_BASE}-960.webp 960w, ${LAB_IMG_BASE}-1600.webp 1600w, ${LAB_IMG_BASE}-1920.webp 1920w`}
-                  sizes="(min-width: 1024px) 38vw, 100vw"
-                />
-                <img
-                  src={`${LAB_IMG_BASE}-fallback.jpg`}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  draggable={false}
-                  className="absolute inset-0 h-full w-full scale-110 object-cover select-none"
-                />
-              </picture>
-            </Parallax>
+            <picture>
+              <source
+                type="image/webp"
+                srcSet={`${LAB_IMG_BASE}-960.webp 960w, ${LAB_IMG_BASE}-1280.webp 1280w`}
+                sizes="(min-width: 1024px) 38vw, 100vw"
+              />
+              <img
+                src={`${LAB_IMG_BASE}-fallback.jpg`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-cover select-none"
+              />
+            </picture>
           </div>
           <div className="flex flex-col justify-center gap-8 px-4 py-12 md:px-10 md:py-24 lg:pr-16 lg:pl-16 lg:py-28">
             <SectionHeader
@@ -280,23 +277,21 @@ export function LaboratorioPage() {
             </motion.div>
           </div>
           <div className="relative min-h-[40vh] overflow-hidden md:min-h-[50vh] lg:min-h-full">
-            <Parallax amount={120} className="absolute inset-0">
-              <picture>
-                <source
-                  type="image/webp"
-                  srcSet={`${POR_QUE_IMG_BASE}-960.webp 960w, ${POR_QUE_IMG_BASE}-1600.webp 1600w, ${POR_QUE_IMG_BASE}-1920.webp 1920w`}
-                  sizes="(min-width: 1024px) 50vw, 100vw"
-                />
-                <img
-                  src={`${POR_QUE_IMG_BASE}-fallback.jpg`}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  draggable={false}
-                  className="absolute inset-0 h-full w-full scale-110 object-cover select-none"
-                />
-              </picture>
-            </Parallax>
+            <picture>
+              <source
+                type="image/webp"
+                srcSet={`${POR_QUE_IMG_BASE}-960.webp 960w, ${POR_QUE_IMG_BASE}-1600.webp 1600w, ${POR_QUE_IMG_BASE}-1920.webp 1920w`}
+                sizes="(min-width: 1024px) 50vw, 100vw"
+              />
+              <img
+                src={`${POR_QUE_IMG_BASE}-fallback.jpg`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-cover select-none"
+              />
+            </picture>
           </div>
         </div>
       </section>
@@ -399,7 +394,7 @@ export function LaboratorioPage() {
               variants={fadeUp}
               className="text-label font-semibold tracking-[0.1em] uppercase text-k-ink-soft"
             >
-              O que esse apoio viabiliza, em 24 meses de operação contínua
+              O que esse apoio viabiliza, em 12 meses de operação contínua
             </motion.p>
 
             <motion.div {...reveal} variants={stagger} className="mt-8 flex flex-col gap-6">
