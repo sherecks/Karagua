@@ -33,7 +33,10 @@ const stats = [
 ];
 
 const items = [
-  { n: "01", title: "Manguezais sequestram carbono acima das florestas, mas raramente contabilizados." },
+  {
+    n: "01",
+    title: "Manguezais sequestram carbono acima das florestas, mas raramente contabilizados.",
+  },
   { n: "02", title: "Sem metodologia certificada, o carbono azul não vira ativo transacionável." },
   { n: "03", title: "As comunidades que conservam o ecossistema ficam fora da cadeia do carbono." },
 ];
@@ -44,7 +47,7 @@ export function Problema() {
   return (
     <section id="problema" data-section-theme="light" className="grid min-h-screen lg:grid-cols-2">
       <div className="relative min-h-[45vh] overflow-hidden md:min-h-[60vh] lg:min-h-screen">
-        <Parallax amount={120} className="absolute inset-0">
+        <Parallax amount={120} minWidth={1024} className="absolute inset-0">
           <picture>
             <source
               type="image/webp"
@@ -57,7 +60,7 @@ export function Problema() {
               loading="lazy"
               decoding="async"
               draggable={false}
-              className="absolute inset-0 h-full w-full scale-110 object-cover select-none"
+              className="absolute inset-0 h-full w-full object-cover select-none lg:scale-110"
             />
           </picture>
         </Parallax>

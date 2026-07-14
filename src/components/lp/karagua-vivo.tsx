@@ -31,7 +31,9 @@ const phases = [
   },
 ];
 
-const SUBHEAD = "text-[clamp(1.25rem,2.8vw,2.25rem)] font-semibold leading-tight text-k-ink";
+// Mobile: descrição leve e suave (a fase é quem manda); sm+: escala original.
+const SUBHEAD =
+  "text-[0.9375rem] font-normal leading-snug text-k-ink-soft sm:text-[clamp(1.25rem,2.8vw,2.25rem)] sm:font-semibold sm:leading-tight sm:text-k-ink";
 
 export function KaraguaVivo() {
   return (
@@ -62,13 +64,13 @@ export function KaraguaVivo() {
             <motion.li
               key={p.n}
               variants={fadeUp}
-              className="group grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-1 sm:grid-cols-[3.5rem_11rem_11rem_1fr] sm:gap-x-8"
+              className="group grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1.5 sm:grid-cols-[3.5rem_11rem_11rem_1fr] sm:gap-x-8 sm:gap-y-1"
             >
               <span className="relative font-mono text-data text-k-deep">
                 <span className="absolute top-1/2 -left-[0.65rem] hidden size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-k-deep/30 ring-4 ring-k-fog transition-colors duration-300 group-hover:bg-k-deep sm:block" />
                 {p.n}
               </span>
-              <span className="text-title font-semibold text-k-ink">{p.phase}</span>
+              <span className="text-base font-semibold text-k-ink sm:text-title">{p.phase}</span>
               <span className="col-start-2 font-mono text-data text-k-ink-soft sm:col-start-3">
                 {p.status}
               </span>
