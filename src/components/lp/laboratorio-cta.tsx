@@ -9,9 +9,9 @@ const LAB_ROUTE = "/laboratorio-karagua-vivo";
 // Fatos-âncora do laboratório (Lei Rouanet): formação gratuita + bolsas +
 // registro cultural. Linha curta, sem prometer além do PRD.
 const facts = [
-  { n: "12", label: "oficinas gratuitas e abertas" },
+  { n: "6", label: "oficinas gratuitas e abertas" },
   { n: "6", label: "bolsas de pesquisa no território" },
-  { n: "24", label: "meses de registro em documentário" },
+  { n: "12", label: "meses de registro em documentário" },
 ];
 
 /**
@@ -46,18 +46,15 @@ export function LaboratorioCta() {
         </h2>
 
         <motion.p variants={fadeUp} className="measure mt-8 text-body text-k-ink-soft">
-          Um laboratório de impressão 3D em Balneário Barra do Sul, aberto e gratuito, onde moradores
-          projetam, imprimem e validam protótipos de ecobarreira para o território onde vivem.
+          Um laboratório de impressão 3D em Balneário Barra do Sul, aberto e gratuito, onde
+          moradores projetam, imprimem e validam protótipos de ecobarreira para o território onde
+          vivem.
         </motion.p>
 
         {/* Fatos-âncora */}
         <div className="mt-12 grid gap-8 sm:grid-cols-3 md:mt-16">
           {facts.map((f) => (
-            <motion.div
-              key={f.label}
-              variants={fadeUp}
-              className="flex flex-col gap-2 pt-5"
-            >
+            <motion.div key={f.label} variants={fadeUp} className="flex flex-col gap-2 pt-5">
               <span className="font-mono text-[clamp(1.75rem,3.5vw,2.75rem)] leading-none font-semibold text-k-deep tabular-nums">
                 {f.n}
               </span>

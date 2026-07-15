@@ -31,9 +31,10 @@ const phases = [
   },
 ];
 
-// Mobile: descrição leve e suave (a fase é quem manda); sm+: escala original.
+// Descrição leve e suave em todos os tamanhos: o nome da fase é quem manda na
+// linha (antes a descrição era maior/mais pesada que a fase — hierarquia invertida).
 const SUBHEAD =
-  "text-[0.9375rem] font-normal leading-snug text-k-ink-soft sm:text-[clamp(1.25rem,2.8vw,2.25rem)] sm:font-semibold sm:leading-tight sm:text-k-ink";
+  "text-[0.9375rem] font-normal leading-snug text-k-ink-soft sm:text-[clamp(1.05rem,1.5vw,1.375rem)]";
 
 export function KaraguaVivo() {
   return (
