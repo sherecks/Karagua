@@ -23,9 +23,15 @@ const LINES = [
   },
   {
     text: "manguezal",
-    className: "text-[clamp(4rem,7.6vw,7.5rem)] leading-[0.9] font-bold -tracking-[0.03em]",
-    // Compensa o ar interno da fonte acima das maiúsculas (cresce com o corpo).
-    wrapClassName: "-mt-2 md:-mt-3 lg:-mt-4",
+    // pb no span interno: com leading 0.9 a caixa é menor que o glifo e o
+    // overflow-hidden do wrapper decepava o descendente do "g"; o -mb do
+    // wrapper devolve a altura extra ao layout (ritmo entre linhas intacto).
+    className:
+      "text-[clamp(4rem,7.6vw,7.5rem)] leading-[0.9] font-bold -tracking-[0.03em] pb-[0.15em]",
+    // -mt compensa o ar interno da fonte acima das minúsculas (cresce com o corpo).
+    // O text-[...] repete o corpo do filho para o -mb em `em` compensar o pb na
+    // mesma escala (senão resolveria contra o font-size herdado de ~16px).
+    wrapClassName: "-mt-2 -mb-[0.15em] text-[clamp(4rem,7.6vw,7.5rem)] md:-mt-3 lg:-mt-4",
   },
   {
     text: "em ativo climático",
