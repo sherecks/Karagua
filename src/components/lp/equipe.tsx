@@ -28,6 +28,11 @@ const members = [
     papel: "Levantamentos de campo",
     credencial: "Levantamentos de campo e mapeamento de áreas prioritárias de restauração.",
   },
+  {
+    nome: "Daniela Póvoa",
+    papel: "Captadora de Recursos",
+    credencial: "Estruturação de parcerias e mobilização de capital para lastrear os projetos em campo.",
+  },
 ];
 
 function initials(nome: string) {
