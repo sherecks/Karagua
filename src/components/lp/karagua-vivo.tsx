@@ -65,17 +65,17 @@ export function KaraguaVivo() {
             <motion.li
               key={p.n}
               variants={fadeUp}
-              className="group grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1.5 sm:grid-cols-[3.5rem_11rem_11rem_1fr] sm:gap-x-8 sm:gap-y-1"
+              className="group grid grid-cols-[auto_auto_1fr] items-baseline gap-x-4 gap-y-1.5 sm:grid-cols-[3.5rem_11rem_11rem_1fr] sm:gap-x-8 sm:gap-y-1"
             >
               <span className="relative font-mono text-data text-k-deep">
                 <span className="absolute top-1/2 -left-[0.65rem] hidden size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-k-deep/30 ring-4 ring-k-fog transition-colors duration-300 group-hover:bg-k-deep sm:block" />
                 {p.n}
               </span>
               <span className="text-base font-semibold text-k-ink sm:text-title">{p.phase}</span>
-              <span className="col-start-2 font-mono text-data text-k-ink-soft sm:col-start-3">
+              <span className="font-mono text-data text-k-ink-soft sm:col-start-3">
                 {p.status}
               </span>
-              <h3 className={`${SUBHEAD} col-span-2 sm:col-span-1 sm:col-start-4`}>{p.title}</h3>
+              <h3 className={`${SUBHEAD} col-span-3 sm:col-span-1 sm:col-start-4`}>{p.title}</h3>
             </motion.li>
           ))}
         </motion.ol>
