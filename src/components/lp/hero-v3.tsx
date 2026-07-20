@@ -31,7 +31,9 @@ const LINES = [
     // -mt compensa o ar interno da fonte acima das minúsculas (cresce com o corpo).
     // O text-[...] repete o corpo do filho para o -mb em `em` compensar o pb na
     // mesma escala (senão resolveria contra o font-size herdado de ~16px).
-    wrapClassName: "-mt-2 -mb-[0.15em] text-[clamp(4rem,7.6vw,7.5rem)] md:-mt-3 lg:-mt-4",
+    // -mb devolve só parte do pb: sobra ~0.09em de respiro entre a perna do "g"
+    // e a linha de baixo.
+    wrapClassName: "-mt-2 -mb-[0.06em] text-[clamp(4rem,7.6vw,7.5rem)] md:-mt-3 lg:-mt-4",
   },
   {
     text: "em ativo climático",

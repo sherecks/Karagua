@@ -77,7 +77,7 @@ export function Sidebar({ onClose }: SidebarProps) {
           inherit: true,
           ease: "easeInOut",
         }}
-        className="flex flex-col gap-4 p-6 max-w-xl h-screen mx-auto justify-center items-center md:p-10"
+        className="flex flex-col gap-3 p-6 max-w-xl h-screen mx-auto justify-center items-center sm:gap-4 md:p-10"
       >
         {isHome
           ? itens.map((item, index) => (
@@ -85,7 +85,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                 <motion.a
                   href={`#${item.id}`}
                   onClick={(e) => handleNavigate(e, item.id)}
-                  className="text-3xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
+                  className="text-2xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
                   initial={{ opacity: 0, x: "100%" }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: "100%" }}
@@ -125,7 +125,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                   <Link
                     to={item.to}
                     onClick={() => startViewTransition(onClose)}
-                    className="text-3xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
+                    className="text-2xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
                   >
                     <motion.span
                       className="inline-block origin-left"
@@ -156,7 +156,7 @@ export function Sidebar({ onClose }: SidebarProps) {
               <Link
                 to={link.to}
                 onClick={() => startViewTransition(onClose)}
-                className="text-3xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
+                className="text-2xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
               >
                 <motion.span
                   className="inline-block origin-left"

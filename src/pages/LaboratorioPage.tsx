@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useEffect } from "react";
 import { Footer } from "@/components/footer";
 import { SiteHeader } from "@/components/site-header";
+import { PixelBeamBackground } from "@/components/lp/pixel-beam-background";
 import { ScrollRevealText } from "@/components/lp/scroll-reveal-text";
 import { Section, SectionHeader } from "@/components/lp/section";
 import { clipWipe, fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
@@ -65,21 +66,6 @@ const accessItems = [
   },
 ];
 
-const legacy = [
-  {
-    label: "Antes",
-    text: "a fabricação digital era uma tecnologia distante da realidade de quem vive do manguezal, restrita a centros urbanos e universidades.",
-  },
-  {
-    label: "Depois",
-    text: "moradores de Balneário Barra do Sul projetam, imprimem e validam suas próprias soluções para o território onde vivem, com um equipamento cultural permanente em funcionamento todos os dias.",
-  },
-  {
-    label: "A ponte",
-    text: "o Laboratório Karaguá Vivo, com seus equipamentos audiovisuais e de impressão, permanece na comunidade ao final dos 12 meses como infraestrutura cultural própria.",
-  },
-];
-
 const fundingTable = [
   {
     frente: "Coordenação e gestão",
@@ -115,7 +101,8 @@ export function LaboratorioPage() {
     <div className="min-h-screen bg-muted">
       <SiteHeader />
 
-      {/* Hero: só texto, alinhado à esquerda como as demais seções. */}
+      {/* Hero: split editorial — manchete à esquerda, apoio ancorado à direita
+          na base da manchete (blocos por alinhamento de grid, sem molduras). */}
       <section className="relative flex min-h-[80vh] flex-col justify-center">
         <motion.div
           initial="hidden"
@@ -129,24 +116,27 @@ export function LaboratorioPage() {
           >
             Lei Rouanet · Balneário Barra do Sul (SC)
           </motion.p>
-          <h1 className="mt-4 max-w-[26ch] overflow-hidden text-[clamp(2.1rem,4.6vw,4.5rem)] leading-[1.02] -tracking-[0.02em] font-thin text-k-ink">
-            <motion.span variants={maskRise} className="block">
-              Um laboratório de impressão 3D feito pela{" "}
-              <span className="font-bold text-k-deep">comunidade que vive do manguezal</span>
-            </motion.span>
-          </h1>
-          <motion.p
-            variants={fadeUp}
-            className="measure mt-6 max-w-[46ch] text-body text-k-ink-soft"
-          >
-            O Laboratório Karaguá Vivo leva cultura digital e fabricação 3D para Balneário Barra do
-            Sul (SC), formando moradores e transformando esse conhecimento em soluções reais de
-            preservação costeira. Tudo gratuito, tudo aberto à comunidade.
-          </motion.p>
 
-          <motion.p variants={fadeUp} className="mt-8 text-sm text-k-ink-soft">
-            36 horas de formação gratuita · 6 bolsas de pesquisa · 1 documentário cultural
-          </motion.p>
+          <div className="mt-4 grid gap-10 lg:grid-cols-[1fr_minmax(0,26rem)] lg:items-end lg:gap-20">
+            <h1 className="max-w-[22ch] overflow-hidden text-[clamp(2.1rem,4.8vw,4.75rem)] leading-[1.02] -tracking-[0.02em] font-thin text-k-ink">
+              <motion.span variants={maskRise} className="block">
+                Um laboratório de impressão 3D feito pela{" "}
+                <span className="font-bold text-k-deep">comunidade que vive do manguezal</span>
+              </motion.span>
+            </h1>
+
+            <div className="flex flex-col gap-8">
+              <motion.p variants={fadeUp} className="measure text-body text-k-ink-soft">
+                O Laboratório Karaguá Vivo leva cultura digital e fabricação 3D para Balneário Barra
+                do Sul (SC), formando moradores e transformando esse conhecimento em soluções reais
+                de preservação costeira. Tudo gratuito, tudo aberto à comunidade.
+              </motion.p>
+
+              <motion.p variants={fadeUp} className="text-sm text-k-ink-soft">
+                36 horas de formação gratuita · 6 bolsas de pesquisa · 1 documentário cultural
+              </motion.p>
+            </div>
+          </div>
         </motion.div>
       </section>
 
@@ -296,72 +286,54 @@ export function LaboratorioPage() {
         </div>
       </section>
 
-      {/* Acesso aberto a todos */}
+      {/* Acesso aberto a todos: lista à esquerda, pixel-beam preenchendo a
+          metade direita (a logo revela nos dots; honra reduced-motion). */}
       <Section id="acesso" surface="shell">
-        <SectionHeader
-          eyebrow="Acesso aberto a todos"
-          title={
-            <>
-              Pensado para ser de <span className="font-thin">toda a comunidade.</span>
-            </>
-          }
-        />
-        <motion.ul {...reveal} variants={stagger} className="mt-10 flex flex-col gap-5 md:mt-14">
-          {accessItems.map((item) => (
-            <motion.li
-              key={item.text + (item.bold ?? "")}
-              variants={fadeUp}
-              className="flex gap-4 text-body text-k-ink-soft"
+        <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <SectionHeader
+              eyebrow="Acesso aberto a todos"
+              title={
+                <>
+                  Pensado para ser de <span className="font-thin">toda a comunidade.</span>
+                </>
+              }
+            />
+            <motion.ul
+              {...reveal}
+              variants={stagger}
+              className="mt-10 flex flex-col gap-5 md:mt-14"
             >
-              <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-k-deep" />
-              <p className="measure">
-                {item.text}
-                {item.bold ? (
-                  <strong className="font-semibold text-k-ink">{item.bold}</strong>
-                ) : null}
-                {item.rest ?? (item.bold ? "." : "")}
-              </p>
-            </motion.li>
-          ))}
-        </motion.ul>
-      </Section>
-
-      {/* O legado que fica no território */}
-      <Section id="legado" surface="fog">
-        <SectionHeader
-          eyebrow="O legado"
-          title={
-            <>
-              O que fica no <span className="font-thin">território.</span>
-            </>
-          }
-        />
-        <motion.div
-          {...reveal}
-          variants={stagger}
-          className="mt-10 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-8 md:mt-16"
-        >
-          {legacy.map((item) => (
-            <motion.div
-              key={item.label}
-              variants={fadeUp}
-              className="group flex flex-col gap-3 border-t border-border pt-6 transition-colors duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] hover:border-k-deep/40"
-            >
-              <span className="font-mono text-data tracking-[0.1em] text-k-deep uppercase">
-                {item.label}
-              </span>
-              <p className="text-body text-k-ink-soft transition-colors duration-300 group-hover:text-k-ink">
-                {item.text}
-              </p>
-            </motion.div>
-          ))}
-        </motion.div>
+              {accessItems.map((item) => (
+                <motion.li
+                  key={item.text + (item.bold ?? "")}
+                  variants={fadeUp}
+                  className="flex gap-4 text-body text-k-ink-soft"
+                >
+                  <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-k-deep" />
+                  <p className="measure">
+                    {item.text}
+                    {item.bold ? (
+                      <strong className="font-semibold text-k-ink">{item.bold}</strong>
+                    ) : null}
+                    {item.rest ?? (item.bold ? "." : "")}
+                  </p>
+                </motion.li>
+              ))}
+            </motion.ul>
+          </div>
+          <div className="relative hidden overflow-hidden lg:block">
+            <PixelBeamBackground logoSrc="/logo-sm-1.svg" />
+          </div>
+        </div>
       </Section>
 
       {/* Apoie via Lei Rouanet: esquerda pitch + CTA, direita detalhamento. */}
       <Section id="apoie" surface="primary">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
-          <div className="flex flex-col">
+          {/* justify-between: o parágrafo ESG ancora na base, alinhando o fim
+              das duas colunas (antes a esquerda terminava bem antes da direita). */}
+          <div className="flex flex-col lg:justify-between lg:gap-10">
             <SectionHeader
               eyebrow="Apoie via Lei Rouanet"
               title={
