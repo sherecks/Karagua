@@ -354,18 +354,14 @@ export function LaboratorioPage() {
 
             {/* Corpo maior (mesma escala da citação de "Por que isso importa"):
                 reforça o pitch ESG com os entregáveis mensuráveis do projeto. */}
-            <motion.p
-              {...reveal}
-              variants={fadeUp}
-              className="measure text-[clamp(1.15rem,1.9vw,1.5rem)] leading-snug font-medium text-k-ink"
-            >
+            <motion.p {...reveal} variants={fadeUp} className="">
               Se sua empresa já tem agenda ESG ou de descarbonização, apoiar o laboratório é
               extensão natural desse compromisso: o mesmo território monitorado pela Karaguá Ecotech
               para a futura certificação de créditos de carbono azul agora também recebe cultura e
               tecnologia comunitária. São 6 oficinas gratuitas de cultura digital e impressão 3D,
-              somando 36 horas/aula em 12 meses, laboratório em operação contínua, 6 bolsas de
-              pesquisa para jovens do território, 4 mostras culturais abertas ao público e 1
-              documentário cultural, cada entrega mensurável e prestada em contas.
+              somando 36 horas/aula, laboratório em operação contínua, 6 bolsas de pesquisa para
+              jovens do território, 4 mostras culturais abertas ao público e 1 documentário
+              cultural, cada entrega mensurável e prestada em contas.
             </motion.p>
           </div>
 
