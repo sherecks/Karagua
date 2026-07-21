@@ -112,13 +112,17 @@ export function LaboratorioPage() {
         >
           <motion.p
             variants={fadeUp}
-            className="text-label font-semibold tracking-[0.12em] text-k-ink-soft uppercase"
+            className="text-label font-semibold tracking-[0.12em] text-k-deep uppercase"
           >
             Lei Rouanet · Balneário Barra do Sul (SC)
           </motion.p>
 
           <div className="mt-4 grid gap-10 lg:grid-cols-[1fr_minmax(0,26rem)] lg:items-end lg:gap-20">
-            <h1 className="max-w-[22ch] overflow-hidden text-[clamp(2.1rem,4.8vw,4.75rem)] leading-[1.02] -tracking-[0.02em] font-thin text-k-ink">
+            {/* pb+mb (net zero): dá respiro à perna do "g" de "manguezal" (última
+                palavra, pode cair na linha final) sem o overflow-hidden do
+                mask-reveal cortá-la; a compensação mantém o alinhamento com a
+                coluna da direita intacto. */}
+            <h1 className="max-w-[22ch] overflow-hidden pb-[0.15em] -mb-[0.15em] text-[clamp(2.1rem,4.8vw,4.75rem)] leading-[1.02] -tracking-[0.02em] font-thin text-k-ink">
               <motion.span variants={maskRise} className="block">
                 Um laboratório de impressão 3D feito pela{" "}
                 <span className="font-bold text-k-deep">comunidade que vive do manguezal</span>
@@ -331,9 +335,10 @@ export function LaboratorioPage() {
       {/* Apoie via Lei Rouanet: esquerda pitch + CTA, direita detalhamento. */}
       <Section id="apoie" surface="primary">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
-          {/* justify-between: o parágrafo ESG ancora na base, alinhando o fim
-              das duas colunas (antes a esquerda terminava bem antes da direita). */}
-          <div className="flex flex-col lg:justify-between lg:gap-10">
+          {/* Gap fixo e generoso (não justify-between): com a copy enxuta, forçar
+              as duas colunas a terminarem juntas abria um vazio artificial no
+              meio; alturas finais diferentes são normais em layout editorial. */}
+          <div className="flex flex-col gap-10">
             <SectionHeader
               eyebrow="Apoie via Lei Rouanet"
               title={
@@ -342,10 +347,8 @@ export function LaboratorioPage() {
                 </>
               }
             >
-              Este projeto capta recursos pelo mecanismo de incentivo fiscal da Lei Rouanet (Lei nº
-              8.313/1991), via Salic/Ministério da Cultura. Sua empresa pode destinar parte do
-              imposto de renda devido para viabilizar o laboratório, sem custo adicional, dentro do
-              que já seria pago em impostos.
+              Via Lei Rouanet (Lei nº 8.313/1991), sua empresa destina parte do imposto de renda
+              devido ao laboratório, sem custo adicional, dentro do que já seria pago em impostos.
             </SectionHeader>
 
             <motion.p
@@ -353,10 +356,9 @@ export function LaboratorioPage() {
               variants={fadeUp}
               className="measure mt-8 text-body text-k-ink-soft"
             >
-              Se sua empresa já trabalha com agenda ESG ou descarbonização, inclusive se já compra
-              créditos de carbono azul da Karaguá Ecotech, apoiar o Laboratório Karaguá Vivo é uma
-              extensão natural desse compromisso: mesmo território, agora também investindo em
-              cultura e tecnologia comunitária.
+              Se já compra créditos de carbono azul da Karaguá Ecotech ou tem agenda ESG, apoiar o
+              laboratório é extensão natural: mesmo território, agora também em cultura e tecnologia
+              comunitária.
             </motion.p>
           </div>
 
