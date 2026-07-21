@@ -340,10 +340,11 @@ export function LaboratorioPage() {
               meio; alturas finais diferentes são normais em layout editorial. */}
           <div className="flex flex-col gap-10">
             <SectionHeader
+              size="display"
               eyebrow="Apoie via Lei Rouanet"
               title={
                 <>
-                  Estruturado via <span className="font-thin">incentivo fiscal cultural.</span>
+                  Estruturado via <span className="font-bold">incentivo fiscal cultural.</span>
                 </>
               }
             >
