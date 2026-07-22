@@ -1,6 +1,5 @@
 import { EASE_OUT_QUART } from "@/lib/motion";
 import { NAV_SECTIONS } from "@/lib/sections";
-import { SITE_EMAIL } from "@/lib/site";
 import { startViewTransition } from "@/lib/view-transition";
 import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
@@ -171,28 +170,6 @@ export function Sidebar({ onClose }: SidebarProps) {
           </li>
         ))}
       </motion.ul>
-      <motion.div className="flex h-24 flex-col gap-2 bottom-2 left-6 z-100 absolute">
-        <motion.span
-          className="inline-block text-white mix-blend-difference"
-          whileHover={{
-            scale: 1.02,
-            fontStyle: "italic",
-            x: 10,
-          }}
-        >
-          {SITE_EMAIL}
-        </motion.span>
-        <motion.span
-          className="inline-block text-white mix-blend-difference"
-          whileHover={{
-            scale: 1.02,
-            fontStyle: "italic",
-            x: 10,
-          }}
-        >
-          (47) 99692-3664
-        </motion.span>
-      </motion.div>
     </motion.div>
   );
 }
