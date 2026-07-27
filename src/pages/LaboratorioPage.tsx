@@ -351,10 +351,7 @@ export function LaboratorioPage() {
               Se sua empresa já tem agenda ESG ou de descarbonização, apoiar o laboratório é
               extensão natural desse compromisso: o mesmo território monitorado pela Karaguá Ecotech
               para a futura certificação de créditos de carbono azul agora também recebe cultura e
-              tecnologia comunitária. São 6 oficinas gratuitas de cultura digital e impressão 3D,
-              somando 36 horas/aula, laboratório em operação contínua, 6 bolsas de pesquisa para
-              jovens do território, 4 mostras culturais abertas ao público e 1 documentário
-              cultural, cada entrega mensurável e prestada em contas.
+              tecnologia comunitária.
             </motion.p>
           </div>
 
