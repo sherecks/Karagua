@@ -2,7 +2,12 @@ import { EASE_OUT_QUART } from "@/lib/motion";
 import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
 
-const VIDEO_SRC = `${import.meta.env.BASE_URL}images/mangue4k.mp4`.replace(/\/+/g, "/");
+// Duas renditions H.264 (faststart, sem trilha de áudio): o browser decodifica
+// em hardware e começa a tocar com os primeiros KB, em vez de baixar o arquivo
+// inteiro antes do primeiro frame. A escolha é feita no mount — vídeo de fundo
+// não precisa reagir a resize.
+const VIDEO_1080 = `${import.meta.env.BASE_URL}images/mangue-1080.mp4`.replace(/\/+/g, "/");
+const VIDEO_720 = `${import.meta.env.BASE_URL}images/mangue-720.mp4`.replace(/\/+/g, "/");
 const POSTER_SRC = `${import.meta.env.BASE_URL}images/mangue-poster.jpg`.replace(/\/+/g, "/");
 
 /**
@@ -65,9 +70,12 @@ export function HeroV3() {
     const video = videoRef.current;
     if (!video) return;
     // Sob reduced-motion, mostra só o poster (frame estático): sem autoplay,
-    // sem loop de vídeo em segundo plano (Spec/02 + WCAG 2.2.2).
+    // sem loop de vídeo em segundo plano (Spec/02 + WCAG 2.2.2). O src só é
+    // atribuído aqui, então nesse caso nada de vídeo chega a ser baixado.
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     video.muted = true; // garante a propriedade (não só o atributo) antes do play, exigido por autoplay policies
+    video.preload = "auto"; // buffer à frente: o gargalo é a rede, não o disco
+    video.src = window.matchMedia("(min-width: 1024px)").matches ? VIDEO_1080 : VIDEO_720;
     void video.play().catch(() => {});
   }, []);
 
@@ -76,7 +84,6 @@ export function HeroV3() {
       <video
         ref={videoRef}
         className="absolute inset-0 h-full w-full object-cover"
-        src={VIDEO_SRC}
         poster={POSTER_SRC}
         muted
         loop
