@@ -7,8 +7,8 @@ import { ScrollRevealText } from "@/components/lp/scroll-reveal-text";
 import { Section, SectionHeader } from "@/components/lp/section";
 import { clipWipe, fadeUp, maskRise, reveal, stagger } from "@/lib/motion";
 
-const LAB_IMG = `${import.meta.env.BASE_URL}images/img2-1280.jpg`.replace(/\/+/g, "/");
-const POR_QUE_IMG_BASE = `${import.meta.env.BASE_URL}images/img5`.replace(/\/+/g, "/");
+const LAB_IMG_BASE = `${import.meta.env.BASE_URL}images/lab`.replace(/\/+/g, "/");
+const POR_QUE_IMG_BASE = `${import.meta.env.BASE_URL}images/prototipo`.replace(/\/+/g, "/");
 
 const cycleSteps = [
   "Modelagem digital",
@@ -146,16 +146,26 @@ export function LaboratorioPage() {
 
       {/* O que é: imagem à esquerda, texto à direita. */}
       <section id="o-que-e" className="bg-k-fog">
-        <div className="grid lg:grid-cols-[38%_1fr] lg:items-stretch">
+        <div className="grid lg:grid-cols-[56%_1fr] lg:items-stretch">
           <div className="relative min-h-[40vh] overflow-hidden md:min-h-[50vh] lg:min-h-full">
-            <img
-              src={LAB_IMG}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              className="absolute inset-0 h-full w-full object-cover select-none"
-            />
+            <picture>
+              <source
+                type="image/webp"
+                srcSet={`${LAB_IMG_BASE}-960.webp 960w, ${LAB_IMG_BASE}-1280.webp 1280w, ${LAB_IMG_BASE}-1600.webp 1600w`}
+                sizes="(min-width: 1024px) 56vw, 100vw"
+              />
+              <img
+                src={`${LAB_IMG_BASE}-fallback.jpg`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-cover select-none"
+              />
+            </picture>
+            {/* Overlay escuro: assenta a foto no tom da seção e mantém o verde
+                da parede sob controle. */}
+            <div aria-hidden className="pointer-events-none absolute inset-0 bg-black/25" />
           </div>
           <div className="flex flex-col justify-center gap-8 px-4 py-12 md:px-10 md:py-24 lg:pr-16 lg:pl-16 lg:py-28">
             <SectionHeader
@@ -236,7 +246,7 @@ export function LaboratorioPage() {
       {/* Por que isso importa */}
       {/* Por que isso importa: texto à esquerda, imagem à direita. */}
       <section id="por-que-importa" className="bg-k-fog">
-        <div className="grid lg:grid-cols-[1fr_38%] lg:items-stretch">
+        <div className="grid lg:grid-cols-[1fr_50%] lg:items-stretch">
           <div className="flex flex-col justify-center gap-8 px-4 py-12 md:px-10 md:py-24 lg:py-28 lg:pr-16 lg:pl-16">
             <SectionHeader
               eyebrow="Por que isso importa"
