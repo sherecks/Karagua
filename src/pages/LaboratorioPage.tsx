@@ -117,30 +117,15 @@ export function LaboratorioPage() {
             Lei Rouanet · Balneário Barra do Sul (SC)
           </motion.p>
 
-          <div className="mt-4 grid gap-10 lg:grid-cols-[1fr_minmax(0,26rem)] lg:items-end lg:gap-20">
-            {/* pb+mb (net zero): dá respiro à perna do "g" de "manguezal" (última
-                palavra, pode cair na linha final) sem o overflow-hidden do
-                mask-reveal cortá-la; a compensação mantém o alinhamento com a
-                coluna da direita intacto. */}
-            <h1 className="max-w-[22ch] overflow-hidden pb-[0.15em] -mb-[0.15em] text-[clamp(2.1rem,4.8vw,4.75rem)] leading-[1.02] -tracking-[0.02em] font-thin text-k-ink">
-              <motion.span variants={maskRise} className="block">
-                Um laboratório de impressão 3D feito pela{" "}
-                <span className="font-bold text-k-deep">comunidade que vive do manguezal</span>
-              </motion.span>
-            </h1>
-
-            <div className="flex flex-col gap-8">
-              <motion.p variants={fadeUp} className="measure text-body text-k-ink-soft">
-                O Laboratório Karaguá Vivo leva cultura digital e fabricação 3D para Balneário Barra
-                do Sul (SC), formando moradores e transformando esse conhecimento em soluções reais
-                de preservação costeira. Tudo gratuito, tudo aberto à comunidade.
-              </motion.p>
-
-              <motion.p variants={fadeUp} className="text-sm text-k-ink-soft">
-                36 horas de formação gratuita · 6 bolsas de pesquisa · 1 documentário cultural
-              </motion.p>
-            </div>
-          </div>
+          {/* pb+mb (net zero): dá respiro à perna do "g" de "manguezal" (última
+              palavra, pode cair na linha final) sem o overflow-hidden do
+              mask-reveal cortá-la, sem deslocar o bloco. */}
+          <h1 className="mt-4 max-w-[22ch] overflow-hidden pb-[0.15em] -mb-[0.15em] text-[clamp(2.1rem,4.8vw,4.75rem)] leading-[1.02] -tracking-[0.02em] font-thin text-k-ink">
+            <motion.span variants={maskRise} className="block">
+              Um laboratório de impressão 3D feito pela{" "}
+              <span className="font-bold text-k-deep">comunidade que vive do manguezal</span>
+            </motion.span>
+          </h1>
         </motion.div>
       </section>
 
