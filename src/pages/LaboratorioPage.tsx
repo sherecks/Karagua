@@ -371,7 +371,7 @@ export function LaboratorioPage() {
                   variants={fadeUp}
                   className="border-t border-border pt-6"
                 >
-                  <h3 className="font-semibold text-k-ink">{row.frente}</h3>
+                  <h3 className="text-title font-semibold text-k-ink">{row.frente}</h3>
                   <p className="mt-1 text-body text-k-ink-soft">{row.cobre}</p>
                 </motion.div>
               ))}
