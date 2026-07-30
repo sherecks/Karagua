@@ -1,7 +1,6 @@
 import { motion } from "motion/react";
 import { DataPoint } from "@/components/lp/data-point";
 import { SectionHeader } from "@/components/lp/section";
-import { Parallax } from "@/components/parallax";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
 
 const PROB_IMG_BASE = `${import.meta.env.BASE_URL}images/img3`.replace(/\/+/g, "/");
@@ -47,23 +46,24 @@ export function Problema() {
   return (
     <section id="problema" data-section-theme="light" className="grid min-h-screen lg:grid-cols-2">
       <div className="relative min-h-[45vh] overflow-hidden md:min-h-[60vh] lg:min-h-screen">
-        <Parallax amount={120} minWidth={1024} className="absolute inset-0">
-          <picture>
-            <source
-              type="image/webp"
-              srcSet={`${PROB_IMG_BASE}-960.webp 960w, ${PROB_IMG_BASE}-1280.webp 1280w`}
-              sizes="(min-width: 1024px) 50vw, 100vw"
-            />
-            <img
-              src={`${PROB_IMG_BASE}-fallback.jpg`}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              className="absolute inset-0 h-full w-full object-cover select-none lg:scale-110"
-            />
-          </picture>
-        </Parallax>
+        <picture>
+          <source
+            type="image/webp"
+            srcSet={`${PROB_IMG_BASE}-960.webp 960w, ${PROB_IMG_BASE}-1280.webp 1280w`}
+            sizes="(min-width: 1024px) 50vw, 100vw"
+          />
+          <img
+            src={`${PROB_IMG_BASE}-fallback.jpg`}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="absolute inset-0 h-full w-full object-cover select-none"
+          />
+        </picture>
+        {/* Overlay escuro, igual ao scrim do vídeo do hero: mesma continuidade
+            de humor entre as duas primeiras seções, sem mexer na cor da foto. */}
+        <div aria-hidden="true" className="absolute inset-0 bg-black/45" />
       </div>
 
       <div className="surface-primary flex flex-col justify-between gap-10 px-4 py-10 md:gap-16 md:px-10 md:py-24 lg:px-16">

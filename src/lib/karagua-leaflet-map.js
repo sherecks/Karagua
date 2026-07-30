@@ -16,6 +16,10 @@ class KaraguaLeafletMap extends HTMLElement {
     this._windCanvas = null;
     this._windRaf = 0;
     this._windParticles = null;
+    this._windActive = false;
+    this._mangroveLayer = null;
+    this._mangroveActive = false;
+    this._mangroveRequestId = 0;
 
     this._centerLat = -26.39;
     this._centerLng = -48.626;
@@ -33,7 +37,10 @@ class KaraguaLeafletMap extends HTMLElement {
 
   disconnectedCallback() {
     this._stopWindAnimation();
-    if (this._map) this._map.remove();
+    if (this._map) {
+      this._map.off("moveend zoomend", this._refreshMangrove, this);
+      this._map.remove();
+    }
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
@@ -219,6 +226,21 @@ class KaraguaLeafletMap extends HTMLElement {
           filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
         }
         .wind-canvas { pointer-events: none; }
+        /* blur amacia os pixels do raster (30m) em manchas, tipo heatmap; o
+           filtro SVG #mangrove-heat (definido abaixo) converte a escala de
+           cinza (já esticada via renderingRule Stretch/DRA na URL) num
+           gradiente azul→verde→amarelo→vermelho por concentração. Sem
+           canvas/leitura de pixel, então não depende de CORS. */
+        .mangrove-tint {
+          filter: blur(6px) url(#mangrove-heat);
+        }
+        .layer-credit {
+          display: block;
+          font-size: 10px;
+          color: #6B7B8D;
+          margin: 4px 0 0 23px;
+          line-height: 1.4;
+        }
         #points-section { margin-top: 0; }
         .points-group-label {
           font-size: 11px;
@@ -318,6 +340,15 @@ class KaraguaLeafletMap extends HTMLElement {
           }
         }
       </style>
+      <svg width="0" height="0" style="position:absolute">
+        <filter id="mangrove-heat" color-interpolation-filters="sRGB">
+          <feComponentTransfer>
+            <feFuncR type="table" tableValues="0.08 0.08 0.16 0.82 0.90 0.78"/>
+            <feFuncG type="table" tableValues="0.24 0.55 0.71 0.82 0.47 0.12"/>
+            <feFuncB type="table" tableValues="0.47 0.71 0.31 0.16 0.12 0.12"/>
+          </feComponentTransfer>
+        </filter>
+      </svg>
       <div id="map"></div>
       <button id="panel-toggle" aria-label="Abrir painel">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2C3E50" stroke-width="2" stroke-linecap="round">
@@ -344,6 +375,11 @@ class KaraguaLeafletMap extends HTMLElement {
             <input type="checkbox" id="wind-toggle">
             <span>Vento</span>
           </label>
+          <label class="layer-toggle">
+            <input type="checkbox" id="mangrove-toggle">
+            <span>Cobertura de manguezal</span>
+          </label>
+          <span class="layer-credit">Altura do dossel · NASA/ORNL DAAC (Simard et al.)</span>
         </div>
         <div class="panel-divider"></div>
         <div id="points-section">
@@ -389,8 +425,12 @@ class KaraguaLeafletMap extends HTMLElement {
       },
     ).addTo(this._map);
 
-    // Pane próprio abaixo dos marcadores e sem eventos: as setas de vento
-    // nunca bloqueiam o clique nos pontos de interesse.
+    // Panes próprios abaixo dos marcadores e sem eventos: vento e manguezal
+    // nunca bloqueiam o clique nos pontos de interesse. Manguezal fica abaixo
+    // do vento (350) para as partículas desenharem por cima do tint verde.
+    const mangrovePane = this._map.createPane("mangrovePane");
+    mangrovePane.style.zIndex = 300;
+    mangrovePane.style.pointerEvents = "none";
     const windPane = this._map.createPane("windPane");
     windPane.style.zIndex = 350;
     windPane.style.pointerEvents = "none";
@@ -400,6 +440,7 @@ class KaraguaLeafletMap extends HTMLElement {
     void this._loadConditions();
     this._initSideToggle();
     this._initWindToggle();
+    this._initMangroveToggle();
 
     this.dispatchEvent(
       new CustomEvent("map-ready", {
@@ -709,11 +750,19 @@ class KaraguaLeafletMap extends HTMLElement {
     toggle.addEventListener("change", () => void this._setWindVisible(toggle.checked));
   }
 
+  // Mapa em P&B enquanto vento OU manguezal estiverem ativos (qualquer um dos
+  // dois já justifica o contraste); só volta a cor quando os dois desligarem.
+  _updateBaseFilter() {
+    const active = this._windActive || this._mangroveActive;
+    this._map.getPane("tilePane").style.filter = active ? "grayscale(1) contrast(0.95)" : "";
+  }
+
   async _setWindVisible(on) {
+    this._windActive = on;
     if (!on) {
       this._stopWindAnimation();
       if (this._windLayer) this._map.removeLayer(this._windLayer);
-      this._map.getPane("tilePane").style.filter = "";
+      this._updateBaseFilter();
       return;
     }
     const STALE_MS = 30 * 60 * 1000;
@@ -727,7 +776,7 @@ class KaraguaLeafletMap extends HTMLElement {
     }
     if (!this._windField) return;
 
-    this._map.getPane("tilePane").style.filter = "grayscale(1) contrast(0.95)";
+    this._updateBaseFilter();
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) {
       if (!this._windLayer) this._windLayer = this._buildWindArrows(this._windField.points);
@@ -933,6 +982,92 @@ class KaraguaLeafletMap extends HTMLElement {
       );
     }
     return group;
+  }
+
+  // ── Camada de cobertura de manguezal (NASA/ORNL DAAC) ────────────────────
+  // ImageServer público (Simard et al., altura de dossel via satélite): sem
+  // chave, sem servidor nosso no meio. O exportImage em png32 já devolve alpha
+  // real (0 fora de manguezal, 255 dentro) — só recolorimos via CSS filter
+  // (.mangrove-tint), sem canvas/pixel read (evita a falta de header CORS).
+  // Camada de referência (imagem de satélite, não tempo real); reconsulta a
+  // cada moveend/zoomend para acompanhar a área visível.
+  _initMangroveToggle() {
+    const toggle = this.shadowRoot.getElementById("mangrove-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("change", () => void this._setMangroveVisible(toggle.checked));
+  }
+
+  async _setMangroveVisible(on) {
+    this._mangroveActive = on;
+    if (!on) {
+      this._map.off("moveend zoomend", this._refreshMangrove, this);
+      if (this._mangroveLayer) {
+        this._map.removeLayer(this._mangroveLayer);
+        this._mangroveLayer = null;
+      }
+      this._updateBaseFilter();
+      return;
+    }
+    this._map.on("moveend zoomend", this._refreshMangrove, this);
+    this._updateBaseFilter();
+    await this._refreshMangrove();
+  }
+
+  // Rendering rule Stretch+DRA: sem isso os valores de altura de dossel na
+  // baía ficam espremidos perto do preto (0-135 de 255, testado); com DRA o
+  // servidor normaliza pelo min/max REAL do recorte em tela, dando o range
+  // cheio (0-255) que o LUT de calor (#mangrove-heat) precisa para variar
+  // de azul (baixo) a vermelho (alto).
+  static MANGROVE_RENDERING_RULE = encodeURIComponent(
+    JSON.stringify({
+      rasterFunction: "Stretch",
+      rasterFunctionArguments: { StretchType: 6, DRA: true, UseGamma: false },
+    }),
+  );
+
+  async _refreshMangrove() {
+    const b = this._map.getBounds();
+    const size = this._map.getSize();
+    const maxSide = 1024;
+    const scale = Math.min(1, maxSide / Math.max(size.x, size.y));
+    const w = Math.round(size.x * scale);
+    const h = Math.round(size.y * scale);
+
+    const url =
+      "https://gis.earthdata.nasa.gov/image/rest/services/C2389107206-ORNL_CLOUD/CMS_Global_Map_Mangrove_Canopy_1665/ImageServer/exportImage" +
+      `?bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}` +
+      `&bboxSR=4326&imageSR=4326&size=${w},${h}&format=png32&f=image` +
+      `&renderingRule=${KaraguaLeafletMap.MANGROVE_RENDERING_RULE}`;
+    const bounds = [
+      [b.getSouth(), b.getWest()],
+      [b.getNorth(), b.getEast()],
+    ];
+
+    // Pré-carrega a imagem nova ANTES de trocar url/bounds no overlay: sem
+    // isso, setBounds redimensiona o <img> pra área nova na hora, mas o
+    // conteúdo ainda é o frame antigo — esticado/distorcido até a imagem nova
+    // chegar. Guard por requestId: se outro refresh começou nesse meio-tempo
+    // (pan/zoom seguinte), descarta este resultado atrasado.
+    const requestId = ++this._mangroveRequestId;
+    await new Promise((resolve) => {
+      const preload = new Image();
+      preload.onload = resolve;
+      preload.onerror = resolve;
+      preload.src = url;
+    });
+    if (requestId !== this._mangroveRequestId) return;
+
+    if (this._mangroveLayer) {
+      this._mangroveLayer.setUrl(url);
+      this._mangroveLayer.setBounds(bounds);
+    } else {
+      this._mangroveLayer = L.imageOverlay(url, bounds, {
+        pane: "mangrovePane",
+        className: "mangrove-tint",
+        opacity: 0.85,
+        interactive: false,
+      }).addTo(this._map);
+    }
   }
 
   _updateMap() {
