@@ -8,13 +8,27 @@ import { SITE_EMAIL } from "@/lib/site";
 // público × parceiros). Cada um abre o e-mail com assunto próprio — base para
 // rotear o lead por origem.
 const channels = [
-  { n: "01", label: "Investimento", title: "Para investidores", subject: "Investimento: Karaguá Ecotech" },
-  { n: "02", label: "Poder público", title: "Para o poder público", subject: "Poder público: Karaguá Ecotech" },
-  { n: "03", label: "Parcerias", title: "Para parceiros técnicos", subject: "Parceria técnica: Karaguá Ecotech" },
+  {
+    n: "01",
+    label: "Investimento",
+    title: "Para investidores",
+    subject: "Investimento: Karaguá Ecotech",
+  },
+  {
+    n: "02",
+    label: "Poder público",
+    title: "Para o poder público",
+    subject: "Poder público: Karaguá Ecotech",
+  },
+  {
+    n: "03",
+    label: "Parcerias",
+    title: "Para parceiros técnicos",
+    subject: "Parceria técnica: Karaguá Ecotech",
+  },
 ];
 
-const mailto = (subject: string) =>
-  `mailto:${SITE_EMAIL}?subject=${encodeURIComponent(subject)}`;
+const mailto = (subject: string) => `mailto:${SITE_EMAIL}?subject=${encodeURIComponent(subject)}`;
 
 export function CtaFinal() {
   return (

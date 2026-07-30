@@ -31,7 +31,8 @@ const members = [
   {
     nome: "Daniela Póvoa",
     papel: "Captadora de Recursos",
-    credencial: "Estruturação de parcerias e mobilização de capital para lastrear os projetos em campo.",
+    credencial:
+      "Estruturação de parcerias e mobilização de capital para lastrear os projetos em campo.",
   },
 ];
 
@@ -49,7 +50,11 @@ export function Equipe() {
     // Seção clara da costura Impacto→Equipe (Spec/02 §7): o azul carbon do
     // Impacto funde para o claro aqui. Texto em currentColor anima na costura.
     <Section id="equipe" surface="inherit" theme="light">
-      <SectionHeader tone="inherit" eyebrow="Quem conduz" title="Uma equipe técnica multidisciplinar.">
+      <SectionHeader
+        tone="inherit"
+        eyebrow="Quem conduz"
+        title="Uma equipe técnica multidisciplinar."
+      >
         Capacidade reunida em torno de caracterização ambiental, monitoramento e do rigor técnico
         exigido pela certificação Verra.
       </SectionHeader>

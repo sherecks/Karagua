@@ -96,13 +96,7 @@ export function SectionHeader({
       >
         {eyebrow}
       </motion.p>
-      <h2
-        className={cn(
-          "mt-4 overflow-hidden",
-          titleSize,
-          inherit ? "" : "text-foreground",
-        )}
-      >
+      <h2 className={cn("mt-4 overflow-hidden", titleSize, inherit ? "" : "text-foreground")}>
         <motion.span variants={maskRise} className="block">
           {title}
         </motion.span>

@@ -72,9 +72,7 @@ export function KaraguaVivo() {
                 {p.n}
               </span>
               <span className="text-base font-semibold text-k-ink sm:text-title">{p.phase}</span>
-              <span className="font-mono text-data text-k-ink-soft sm:col-start-3">
-                {p.status}
-              </span>
+              <span className="font-mono text-data text-k-ink-soft sm:col-start-3">{p.status}</span>
               <h3 className={`${SUBHEAD} col-span-3 sm:col-span-1 sm:col-start-4`}>{p.title}</h3>
             </motion.li>
           ))}

@@ -51,7 +51,11 @@ function PortasPinned() {
   });
 
   return (
-    <div ref={ref} className="relative bg-background" style={{ height: `${portas.length * 100}vh` }}>
+    <div
+      ref={ref}
+      className="relative bg-background"
+      style={{ height: `${portas.length * 100}vh` }}
+    >
       <div className="sticky top-0 flex h-screen items-center overflow-hidden">
         <div className="mx-auto grid w-full max-w-[120rem] grid-cols-[1fr_1.2fr] items-center gap-16 px-6 md:px-10 lg:px-16">
           {/* Coluna-índice: eyebrow + título + contador + capítulos */}

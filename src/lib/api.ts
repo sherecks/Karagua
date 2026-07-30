@@ -98,3 +98,34 @@ export function updatePonto(id: string, ponto: Omit<PontoInteresse, "id" | "crea
 export function deletePonto(id: string) {
   return request<true>(`/pontos/${id}`, { method: "DELETE" }, true);
 }
+
+export type MangroveHeightmap = {
+  bbox: [west: number, south: number, east: number, north: number];
+  cols: number;
+  rows: number;
+  heightCm: number[];
+  minCm: number;
+  maxCm: number;
+};
+
+/** Grade real de altura de dossel (cm) para o terreno 3D — decodificada no
+ *  servidor a partir do raster da NASA (o browser não teria como ler os
+ *  pixels, o ImageServer não manda CORS). Ver api/index.js:/mangrove-heightmap. */
+export function fetchMangroveHeightmap(bbox: {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  cols?: number;
+  rows?: number;
+}) {
+  const params = new URLSearchParams({
+    west: String(bbox.west),
+    south: String(bbox.south),
+    east: String(bbox.east),
+    north: String(bbox.north),
+  });
+  if (bbox.cols) params.set("cols", String(bbox.cols));
+  if (bbox.rows) params.set("rows", String(bbox.rows));
+  return request<MangroveHeightmap>(`/mangrove-heightmap?${params.toString()}`);
+}

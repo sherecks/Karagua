@@ -5,6 +5,7 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
+const sharp = require("sharp");
 
 const {
   DATABASE_URL,
@@ -221,6 +222,90 @@ app.get("/tide-extremes", async (req, res) => {
       .slice(0, 8);
     tideCache.set(key, { at: Date.now(), data });
     res.set("Cache-Control", "public, max-age=1800").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ── Altura de dossel do manguezal (NASA/ORNL DAAC) — grade real em cm ──────
+// A camada 2D do mapa recolore o mesmo raster só com filtro CSS (nunca lê
+// pixel, o ImageServer não manda CORS). Aqui é diferente: o fetch acontece no
+// servidor (sem restrição de CORS) e devolvemos números reais em centímetros,
+// prontos pro terreno 3D. DRA:false de propósito — o mapa 2D usa DRA:true pra
+// ficar bonito em qualquer recorte de tela, mas isso normaliza pela área
+// visível (a mesma altura real mudaria de valor conforme o enquadramento).
+// Aqui a conversão usa as estatísticas globais do próprio serviço (min/max
+// documentados), então o mesmo ponto sempre reconstrói pro mesmo cm real.
+const MANGROVE_URL =
+  "https://gis.earthdata.nasa.gov/image/rest/services/C2389107206-ORNL_CLOUD/CMS_Global_Map_Mangrove_Canopy_1665/ImageServer/exportImage";
+const MANGROVE_MIN_CM = 0.2844882905483246;
+const MANGROVE_MAX_CM = 910.4758911132812;
+const MANGROVE_RENDERING_RULE = encodeURIComponent(
+  JSON.stringify({
+    rasterFunction: "Stretch",
+    rasterFunctionArguments: { StretchType: 6, DRA: false, UseGamma: false },
+  }),
+);
+const MANGROVE_GRID_MAX = 256;
+const heightmapCache = new Map();
+const HEIGHTMAP_TTL_MS = 6 * 60 * 60 * 1000;
+
+app.get("/mangrove-heightmap", async (req, res) => {
+  const west = Number(req.query.west);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const north = Number(req.query.north);
+  if (![west, south, east, north].every(Number.isFinite)) {
+    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+  }
+  const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
+  const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
+
+  const key = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}:${cols}x${rows}`;
+  const hit = heightmapCache.get(key);
+  if (hit && Date.now() - hit.at < HEIGHTMAP_TTL_MS) {
+    return res.set("Cache-Control", "public, max-age=3600").json({ data: hit.data });
+  }
+
+  try {
+    const url =
+      `${MANGROVE_URL}?bbox=${west},${south},${east},${north}` +
+      `&bboxSR=4326&imageSR=4326&size=${cols},${rows}&format=png32&f=image` +
+      `&renderingRule=${MANGROVE_RENDERING_RULE}`;
+    const upstream = await fetch(url);
+    if (!upstream.ok) {
+      return res.status(502).json({ error: `NASA ImageServer respondeu ${upstream.status}` });
+    }
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    const { data: pixels, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
+
+    if (info.width !== cols || info.height !== rows || info.channels < 4) {
+      return res.status(502).json({
+        error: `Resposta inesperada da NASA (${info.width}x${info.height}, ${info.channels} canais)`,
+      });
+    }
+
+    const total = cols * rows;
+    const heightCm = new Array(total);
+    let minCm = Infinity;
+    let maxCm = 0;
+    for (let i = 0; i < total; i++) {
+      const o = i * info.channels;
+      const alpha = pixels[o + 3];
+      let cm = 0;
+      if (alpha > 0) {
+        const gray = pixels[o]; // R=G=B nessa renderização (escala de cinza)
+        cm = Math.round(MANGROVE_MIN_CM + (gray / 255) * (MANGROVE_MAX_CM - MANGROVE_MIN_CM));
+        if (cm < minCm) minCm = cm;
+        if (cm > maxCm) maxCm = cm;
+      }
+      heightCm[i] = cm;
+    }
+    if (!Number.isFinite(minCm)) minCm = 0;
+
+    const data = { bbox: [west, south, east, north], cols, rows, heightCm, minCm, maxCm };
+    heightmapCache.set(key, { at: Date.now(), data });
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }

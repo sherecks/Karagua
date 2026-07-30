@@ -20,6 +20,9 @@ class KaraguaLeafletMap extends HTMLElement {
     this._mangroveLayer = null;
     this._mangroveActive = false;
     this._mangroveRequestId = 0;
+    this._areaSelectActive = false;
+    this._areaSelectFirstCorner = null;
+    this._areaSelectRect = null;
 
     this._centerLat = -26.39;
     this._centerLng = -48.626;
@@ -241,6 +244,27 @@ class KaraguaLeafletMap extends HTMLElement {
           margin: 4px 0 0 23px;
           line-height: 1.4;
         }
+        .layer-button {
+          display: block;
+          margin-top: 10px;
+          padding: 8px 12px;
+          border: 1px solid #E8E4DC;
+          border-radius: 6px;
+          background: #FBF9F4;
+          color: #2C3E50;
+          font-family: 'Aileron', sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .layer-button:hover { background: #EDE9E0; }
+        .layer-button.active {
+          background: #1A2332;
+          color: #fff;
+          border-color: #1A2332;
+        }
+        #map.area-select-mode { cursor: crosshair; }
         #points-section { margin-top: 0; }
         .points-group-label {
           font-size: 11px;
@@ -380,6 +404,7 @@ class KaraguaLeafletMap extends HTMLElement {
             <span>Cobertura de manguezal</span>
           </label>
           <span class="layer-credit">Altura do dossel · NASA/ORNL DAAC (Simard et al.)</span>
+          <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D →</button>
         </div>
         <div class="panel-divider"></div>
         <div id="points-section">
@@ -441,6 +466,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._initSideToggle();
     this._initWindToggle();
     this._initMangroveToggle();
+    this._initAreaSelectTool();
 
     this.dispatchEvent(
       new CustomEvent("map-ready", {
@@ -1068,6 +1094,98 @@ class KaraguaLeafletMap extends HTMLElement {
         interactive: false,
       }).addTo(this._map);
     }
+  }
+
+  // ── Recorte de área para o terreno 3D ─────────────────────────────────────
+  // Clique-clique (sem plugin de desenho): primeiro clique marca um canto,
+  // o mouse arrasta um retângulo de prévia ao vivo, segundo clique fecha e
+  // navega pra /mapa-3d com o bbox escolhido. Esc cancela.
+  _initAreaSelectTool() {
+    const btn = this.shadowRoot.getElementById("area-select-btn");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      if (this._areaSelectActive) this._cancelAreaSelect();
+      else this._startAreaSelect();
+    });
+  }
+
+  _startAreaSelect() {
+    this._areaSelectActive = true;
+    this._areaSelectFirstCorner = null;
+    const btn = this.shadowRoot.getElementById("area-select-btn");
+    if (btn) {
+      btn.textContent = "Cancelar recorte (Esc)";
+      btn.classList.add("active");
+    }
+    this._map.getContainer().classList.add("area-select-mode");
+    this._map.dragging.disable();
+    this._map.on("click", this._handleAreaSelectClick, this);
+    this._map.on("mousemove", this._handleAreaSelectMove, this);
+    this._areaSelectKeyHandler = (e) => {
+      if (e.key === "Escape") this._cancelAreaSelect();
+    };
+    window.addEventListener("keydown", this._areaSelectKeyHandler);
+  }
+
+  _cancelAreaSelect() {
+    this._areaSelectActive = false;
+    this._areaSelectFirstCorner = null;
+    if (this._areaSelectRect) {
+      this._map.removeLayer(this._areaSelectRect);
+      this._areaSelectRect = null;
+    }
+    const btn = this.shadowRoot.getElementById("area-select-btn");
+    if (btn) {
+      btn.textContent = "Recortar área em 3D →";
+      btn.classList.remove("active");
+    }
+    this._map.getContainer().classList.remove("area-select-mode");
+    this._map.dragging.enable();
+    this._map.off("click", this._handleAreaSelectClick, this);
+    this._map.off("mousemove", this._handleAreaSelectMove, this);
+    if (this._areaSelectKeyHandler) {
+      window.removeEventListener("keydown", this._areaSelectKeyHandler);
+      this._areaSelectKeyHandler = null;
+    }
+  }
+
+  _handleAreaSelectMove(e) {
+    if (!this._areaSelectFirstCorner) return;
+    const bounds = L.latLngBounds(this._areaSelectFirstCorner, e.latlng);
+    if (this._areaSelectRect) {
+      this._areaSelectRect.setBounds(bounds);
+    } else {
+      this._areaSelectRect = L.rectangle(bounds, {
+        color: "#c7d926",
+        weight: 2,
+        fillOpacity: 0.1,
+        interactive: false,
+      }).addTo(this._map);
+    }
+  }
+
+  _handleAreaSelectClick(e) {
+    if (!this._areaSelectFirstCorner) {
+      this._areaSelectFirstCorner = e.latlng;
+      return;
+    }
+    const bounds = L.latLngBounds(this._areaSelectFirstCorner, e.latlng);
+    this._cancelAreaSelect();
+
+    const w = bounds.getWest();
+    const s = bounds.getSouth();
+    const eLng = bounds.getEast();
+    const n = bounds.getNorth();
+    // Área mínima: recorte quase de um ponto só viraria uma grade sem sentido.
+    if (Math.abs(eLng - w) < 0.001 || Math.abs(n - s) < 0.001) return;
+
+    const params = new URLSearchParams({
+      w: w.toFixed(5),
+      s: s.toFixed(5),
+      e: eLng.toFixed(5),
+      n: n.toFixed(5),
+    });
+    window.location.href = `/mapa-3d?${params.toString()}`;
   }
 
   _updateMap() {

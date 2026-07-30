@@ -32,6 +32,11 @@ const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default:
 const LaboratorioPage = lazy(() =>
   import("@/pages/LaboratorioPage").then((m) => ({ default: m.LaboratorioPage })),
 );
+// Three.js fica isolado no próprio chunk: nem o /mapa (que já carrega o
+// Leaflet) nem a home devem baixar as duas libs pesadas juntas.
+const Mapa3DPage = lazy(() =>
+  import("@/pages/Mapa3DPage").then((m) => ({ default: m.Mapa3DPage })),
+);
 
 /**
  * Home — site institucional multi-página (tom startup). Claim-mestre:
@@ -120,6 +125,14 @@ export function App() {
           element={
             <Suspense fallback={null}>
               <LaboratorioPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/mapa-3d"
+          element={
+            <Suspense fallback={null}>
+              <Mapa3DPage />
             </Suspense>
           }
         />
