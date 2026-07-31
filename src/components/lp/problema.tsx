@@ -3,7 +3,7 @@ import { DataPoint } from "@/components/lp/data-point";
 import { SectionHeader } from "@/components/lp/section";
 import { fadeUp, reveal, stagger } from "@/lib/motion";
 
-const PROB_IMG_BASE = `${import.meta.env.BASE_URL}images/img3`.replace(/\/+/g, "/");
+const PROB_IMG_BASE = `${import.meta.env.BASE_URL}images/img2`.replace(/\/+/g, "/");
 
 const STAT_NUM = "text-[clamp(1.5rem,2.4vw,2.25rem)] leading-[1.05] whitespace-nowrap";
 
