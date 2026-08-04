@@ -7,7 +7,7 @@ const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const sharp = require("sharp");
 const { NetCDFReader } = require("netcdfjs");
-const { fromUrl: geotiffFromUrl, fromArrayBuffer: geotiffFromArrayBuffer } = require("geotiff");
+const { fromArrayBuffer: geotiffFromArrayBuffer } = require("geotiff");
 const unzipper = require("unzipper");
 const { Readable, PassThrough } = require("stream");
 
@@ -425,95 +425,13 @@ app.get("/mangrove-biomass", async (req, res) => {
   }
 });
 
-// ── Extensão real do manguezal (MapBiomas) — máscara de classificação ──────
-// NASA dá altura e ESA dá biomassa geral, mas nenhum dos dois responde "aqui
-// É manguezal ou não" — é exatamente o que a classificação anual do
-// MapBiomas responde (classe 5 = Manguezal), e é a fonte mais citada em
-// estudos revisados por pares sobre o tema no Brasil. O mosaico anual do
-// Brasil inteiro fica num bucket público do Google Cloud Storage como
-// Cloud-Optimized GeoTIFF (COG): sem chave, sem login, sem conta do Earth
-// Engine — a lib `geotiff` faz range requests HTTP e lê só os blocos da
-// área pedida (~poucos KB), nunca baixa o arquivo inteiro (~1GB, Brasil).
-const MAPBIOMAS_YEAR = 2023; // ano mais recente confirmado disponível nesse caminho
-const MAPBIOMAS_MANGROVE_CLASS = 5;
-const MAPBIOMAS_URL = (year) =>
-  `https://storage.googleapis.com/mapbiomas-public/initiatives/brasil/collection_9/lclu/coverage/brasil_coverage_${year}.tif`;
 const METERS_PER_DEGREE_LAT = 111_320;
 
-// A leitura do cabeçalho/IFD do COG remoto (~700ms) é reaproveitada entre
-// requisições — só a janela pedida é buscada de novo a cada bbox diferente.
-// IMPORTANTE: readRasters precisa ser chamado no objeto GeoTIFF (multi-IFD),
-// não em getImage() — só assim ele escolhe automaticamente a overview certa
-// pro tamanho pedido. Testado: via getImage() (força resolução plena, 155
-// mil x 159 mil px) uma janela pequena não retornou nem em 2 minutos; via
-// GeoTIFF direto, a mesma janela leva ~3,5s.
-const mapbiomasTiffCache = new Map();
-async function getMapbiomasTiff(year) {
-  const hit = mapbiomasTiffCache.get(year);
-  if (hit) return hit;
-  const promise = geotiffFromUrl(MAPBIOMAS_URL(year));
-  mapbiomasTiffCache.set(year, promise);
-  promise.catch(() => mapbiomasTiffCache.delete(year));
-  return promise;
-}
-
-const extentCache = new Map();
-
-app.get("/mangrove-extent", async (req, res) => {
-  const west = Number(req.query.west);
-  const south = Number(req.query.south);
-  const east = Number(req.query.east);
-  const north = Number(req.query.north);
-  if (![west, south, east, north].every(Number.isFinite)) {
-    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
-  }
-  const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
-  const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
-  const year = Math.round(Number(req.query.year)) || MAPBIOMAS_YEAR;
-
-  const key = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}:${cols}x${rows}:${year}`;
-  const hit = extentCache.get(key);
-  if (hit && Date.now() - hit.at < HEIGHTMAP_TTL_MS) {
-    return res.set("Cache-Control", "public, max-age=3600").json({ data: hit.data });
-  }
-
-  try {
-    const tiff = await getMapbiomasTiff(year);
-    const [classes] = await tiff.readRasters({
-      bbox: [west, south, east, north],
-      width: cols,
-      height: rows,
-      resampleMethod: "nearest", // dado categórico: interpolar geraria classes que não existem
-    });
-
-    const total = cols * rows;
-    const mangrove = new Array(total);
-    const centerLat = (south + north) / 2;
-    const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
-    const cellAreaM2 =
-      ((east - west) / cols) *
-      metersPerDegreeLng *
-      (((north - south) / rows) * METERS_PER_DEGREE_LAT);
-    let mangroveCells = 0;
-    for (let i = 0; i < total; i++) {
-      const isMangrove = classes[i] === MAPBIOMAS_MANGROVE_CLASS ? 1 : 0;
-      mangrove[i] = isMangrove;
-      mangroveCells += isMangrove;
-    }
-    const areaHa = Math.round((mangroveCells * cellAreaM2) / 10_000);
-
-    const data = { bbox: [west, south, east, north], cols, rows, mangrove, areaHa, year };
-    extentCache.set(key, { at: Date.now(), data });
-    res.set("Cache-Control", "public, max-age=3600").json({ data });
-  } catch (e) {
-    res.status(502).json({ error: e.message });
-  }
-});
-
 // ── Extensão real do manguezal (Global Mangrove Watch v4, 2020) ────────────
-// Segunda fonte independente de extensão (a primeira é o MapBiomas acima):
-// Sentinel-2 a 10m, remapeado especificamente para capturar manguezal de
-// franja e ripário em canais estreitos — mais fino que o MapBiomas (30m).
+// NASA dá altura e ESA dá biomassa geral, mas nenhum dos dois responde "aqui
+// É manguezal ou não" — é exatamente o que essa camada responde. Sentinel-2 a
+// 10m, remapeado especificamente para capturar manguezal de franja e
+// ripário em canais estreitos, como o Linguado.
 // Sem chave, sem login (CC BY 4.0, Zenodo) — mas o arquivo publicado é 1
 // único ZIP de ~180MB com o mundo inteiro, não um serviço de recorte como os
 // outros. Truque: o ZIP na verdade contém 1647 tiles de 1°×1° já separados
