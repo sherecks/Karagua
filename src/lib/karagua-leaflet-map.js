@@ -173,6 +173,8 @@ class KaraguaLeafletMap extends HTMLElement {
           border-radius: 6px;
           padding: 14px 16px;
           width: 230px;
+          max-height: calc(100vh - 100px);
+          overflow-y: auto;
           font-family: 'Aileron', sans-serif;
           color: #2C3E50;
           box-shadow: 0 4px 16px rgba(0,0,0,0.12);
@@ -183,14 +185,40 @@ class KaraguaLeafletMap extends HTMLElement {
           pointer-events: none;
           transform: translateX(8px);
         }
-        .section-title {
+        /* Seções recolhíveis: título vira botão (com chevron) que
+           esconde/mostra o corpo — resolve o painel ficando alto demais com
+           tantas camadas, sem esconder nada de vez (o usuário escolhe o que
+           ver). */
+        .section-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          width: 100%;
+          margin: 0 0 8px;
+          padding: 0;
+          border: none;
+          background: none;
+          font: inherit;
           font-weight: 600;
           font-size: 12px;
           text-transform: uppercase;
           letter-spacing: 0.08em;
           color: #6B7B8D;
-          margin-bottom: 8px;
+          cursor: pointer;
         }
+        .section-header:hover { color: #2C3E50; }
+        .section-header:focus-visible {
+          outline: 3px solid rgba(199,217,38,0.4);
+          outline-offset: 2px;
+        }
+        .chevron {
+          flex-shrink: 0;
+          transition: transform 0.2s ease;
+        }
+        .side-section.collapsed .section-header { margin-bottom: 0; }
+        .side-section.collapsed .chevron { transform: rotate(-90deg); }
+        .side-section.collapsed .section-body { display: none; }
         .panel-divider {
           height: 1px;
           background: #E8E4DC;
@@ -204,7 +232,7 @@ class KaraguaLeafletMap extends HTMLElement {
         .cond-label { color: #6B7B8D; font-size: 12px; }
         .cond-value { font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
         .cond-divider { grid-column: 1 / -1; height: 1px; background: #E8E4DC; margin: 4px 0; }
-        #cond-section.loading { opacity: 0.5; }
+        #cond-body.loading { opacity: 0.5; }
         .legend-item {
           display: flex;
           align-items: center;
@@ -391,40 +419,60 @@ class KaraguaLeafletMap extends HTMLElement {
       </button>
       <div id="side-panel">
         <div id="side-content">
-        <div id="cond-section" class="loading">
-          <div class="section-title">Condições</div>
-          <div class="cond-grid"><span class="cond-label">Carregando...</span></div>
+        <div class="side-section" id="cond-section" data-section="cond">
+          <button type="button" class="section-header" aria-expanded="true">
+            <span>Condições</span>
+            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="section-body loading" id="cond-body">
+            <div class="cond-grid"><span class="cond-label">Carregando...</span></div>
+          </div>
         </div>
         <div class="panel-divider"></div>
-        <div id="legend-section">
-          <div class="section-title">Legenda</div>
-          <div class="legend-item"><img src="./images/icon/Monitoramento.svg" width="20"> Monitoramento</div>
-          <div class="legend-item"><img src="./images/icon/Flora.svg" width="20"> Manguezais</div>
-          <div class="legend-item"><img src="./images/icon/Fauna.svg" width="20"> Berçários da Fauna</div>
+        <div class="side-section" id="legend-section" data-section="legend">
+          <button type="button" class="section-header" aria-expanded="true">
+            <span>Legenda</span>
+            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="section-body">
+            <div class="legend-item"><img src="./images/icon/Monitoramento.svg" width="20"> Monitoramento</div>
+            <div class="legend-item"><img src="./images/icon/Flora.svg" width="20"> Manguezais</div>
+            <div class="legend-item"><img src="./images/icon/Fauna.svg" width="20"> Berçários da Fauna</div>
+          </div>
         </div>
         <div class="panel-divider"></div>
-        <div id="layers-section">
-          <div class="section-title">Camadas</div>
-          <label class="layer-toggle">
-            <input type="checkbox" id="wind-toggle">
-            <span>Vento</span>
-          </label>
-          <label class="layer-toggle">
-            <input type="checkbox" id="mangrove-toggle">
-            <span>Cobertura de manguezal</span>
-          </label>
-          <span class="layer-credit">Altura do dossel · NASA/ORNL DAAC (Simard et al.)</span>
-          <label class="layer-toggle">
-            <input type="checkbox" id="gmw-extent-toggle">
-            <span>Extensão real do manguezal (GMW)</span>
-          </label>
-          <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m (2020)</span>
-          <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D →</button>
+        <div class="side-section collapsed" id="layers-section" data-section="layers">
+          <button type="button" class="section-header" aria-expanded="false">
+            <span>Camadas</span>
+            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="section-body">
+            <label class="layer-toggle">
+              <input type="checkbox" id="wind-toggle">
+              <span>Vento</span>
+            </label>
+            <label class="layer-toggle">
+              <input type="checkbox" id="mangrove-toggle">
+              <span>Cobertura de manguezal</span>
+            </label>
+            <span class="layer-credit">Altura do dossel · NASA/ORNL DAAC (Simard et al.)</span>
+            <label class="layer-toggle">
+              <input type="checkbox" id="gmw-extent-toggle">
+              <span>Extensão real do manguezal (GMW)</span>
+            </label>
+            <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m (2020)</span>
+            <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D →</button>
+          </div>
         </div>
         <div class="panel-divider"></div>
-        <div id="points-section">
-          <div class="section-title">Pontos de interesse</div>
-          <div id="points-scroll"></div>
+        <div class="side-section" id="points-section" data-section="points">
+          <button type="button" class="section-header" aria-expanded="true">
+            <span>Pontos de interesse</span>
+            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="section-body">
+            <div id="points-scroll"></div>
+          </div>
         </div>
         </div>
       </div>
@@ -484,6 +532,7 @@ class KaraguaLeafletMap extends HTMLElement {
     if (this._csvUrl) this._loadCSVData();
     void this._loadConditions();
     this._initSideToggle();
+    this._initSectionToggles();
     this._initWindToggle();
     this._initMangroveToggle();
     this._initGmwExtentToggle();
@@ -688,10 +737,24 @@ class KaraguaLeafletMap extends HTMLElement {
     });
   }
 
+  // Cada seção do painel (Condições, Legenda, Camadas, Pontos de interesse)
+  // abre/fecha independente — com tantas camadas o painel inteiro não cabia
+  // na tela; "Camadas" já entra fechada (é a maior e é opt-in, o usuário só
+  // abre quando quer ligar algo), as outras entram abertas.
+  _initSectionToggles() {
+    this.shadowRoot.querySelectorAll(".side-section > .section-header").forEach((header) => {
+      header.addEventListener("click", () => {
+        const section = header.closest(".side-section");
+        const collapsed = section.classList.toggle("collapsed");
+        header.setAttribute("aria-expanded", String(!collapsed));
+      });
+    });
+  }
+
   async _loadConditions() {
     const lat = this._centerLat;
     const lng = this._centerLng;
-    const panel = this.shadowRoot.getElementById("cond-section");
+    const panel = this.shadowRoot.getElementById("cond-body");
 
     let meteo = null;
     let marine = null;
@@ -737,7 +800,7 @@ class KaraguaLeafletMap extends HTMLElement {
     panel.classList.remove("loading");
 
     if (!meteo) {
-      panel.innerHTML = `<div class="section-title">Condições indisponíveis</div>`;
+      panel.innerHTML = `<span class="cond-label">Condições indisponíveis</span>`;
       return;
     }
 
@@ -768,7 +831,6 @@ class KaraguaLeafletMap extends HTMLElement {
       : "";
 
     panel.innerHTML = `
-      <div class="section-title">Condições</div>
       <div class="cond-grid">
         <span class="cond-label">Temperatura</span>
         <span class="cond-value">${cur.temperature_2m}°C</span>
