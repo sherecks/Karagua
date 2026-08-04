@@ -6,6 +6,7 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const sharp = require("sharp");
+const { NetCDFReader } = require("netcdfjs");
 
 const {
   DATABASE_URL,
@@ -305,6 +306,116 @@ app.get("/mangrove-heightmap", async (req, res) => {
 
     const data = { bbox: [west, south, east, north], cols, rows, heightCm, minCm, maxCm };
     heightmapCache.set(key, { at: Date.now(), data });
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ── Biomassa acima do solo (ESA CCI Biomass) — grade real em Mg/ha ─────────
+// Complementa a altura da NASA: floresta em geral (não tem produto específico
+// de manguezal), mas é o único dado de biomassa público, sem chave e com
+// valores reais confirmados nesta área (a NASA tem camadas de biomassa no
+// mesmo serviço, mas exigem token — nunca confirmadas como acessíveis). Via
+// ncss (NetCDF Subset Service) do THREDDS da CEDA: devolve os valores nativos
+// do NetCDF direto, sem quantização em 8-bit (diferente do PNG da NASA) —
+// não precisa de min/max global pra reconstrução, o valor já vem em Mg/ha.
+const ESA_AGB_YEAR = 2024;
+const ESA_AGB_NCSS_URL = `https://data.cci.ceda.ac.uk/thredds/ncss/grid/esacci/biomass/data/agb/maps/v7.0/netcdf/ESACCI-BIOMASS-L4-AGB-MERGED-100m-${ESA_AGB_YEAR}-fv7.0.nc`;
+// Passo nativo do grid em graus (~100m no equador), do dataset.xml da CEDA.
+const ESA_NATIVE_CELL_DEG = 0.0008888888888805013;
+// Nunca baixa mais que isso por lado — recortes grandes usam horizStride
+// maior (subamostra no próprio servidor da CEDA, não baixa o grid inteiro).
+const ESA_MAX_NATIVE_SAMPLES = 700;
+const biomassCache = new Map();
+
+app.get("/mangrove-biomass", async (req, res) => {
+  const west = Number(req.query.west);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const north = Number(req.query.north);
+  if (![west, south, east, north].every(Number.isFinite)) {
+    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+  }
+  const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
+  const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
+
+  const key = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}:${cols}x${rows}`;
+  const hit = biomassCache.get(key);
+  if (hit && Date.now() - hit.at < HEIGHTMAP_TTL_MS) {
+    return res.set("Cache-Control", "public, max-age=3600").json({ data: hit.data });
+  }
+
+  try {
+    const nativeCols = Math.max(1, Math.round((east - west) / ESA_NATIVE_CELL_DEG));
+    const nativeRows = Math.max(1, Math.round((north - south) / ESA_NATIVE_CELL_DEG));
+    const stride = Math.max(
+      1,
+      Math.ceil(Math.max(nativeCols, nativeRows) / ESA_MAX_NATIVE_SAMPLES),
+    );
+
+    const url =
+      `${ESA_AGB_NCSS_URL}?var=agb&north=${north}&south=${south}&east=${east}&west=${west}` +
+      `&horizStride=${stride}&accept=netcdf`;
+    const upstream = await fetch(url);
+    if (!upstream.ok) {
+      return res.status(502).json({ error: `ESA THREDDS respondeu ${upstream.status}` });
+    }
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    const reader = new NetCDFReader(buf);
+    const nativeLat = reader.getDataVariable("lat");
+    const nativeLon = reader.getDataVariable("lon");
+    const nativeAgb = reader.getDataVariable("agb");
+    const nRows = nativeLat.length;
+    const nCols = nativeLon.length;
+    // NetCDF clássico alinha a variável em blocos de 4 bytes: grades com
+    // dimensão ímpar (ex. 563x563 em tipos de 2 bytes) sobram 1 valor de
+    // padding no fim — inofensivo, nunca é indexado (índice máximo é
+    // (nRows-1)*nCols+(nCols-1), sempre menor que nRows*nCols).
+    if (nativeAgb.length < nRows * nCols) {
+      return res.status(502).json({ error: "Grade inesperada na resposta da ESA" });
+    }
+
+    // Reamostra (vizinho mais próximo) pra grade cols x rows pedida, alinhada
+    // célula a célula com o /mangrove-heightmap (mesmo bbox) — a resolução
+    // nativa é diferente (100m ESA vs ~31m NASA), então os dois só se casam na
+    // grade de visualização, não no pixel de origem.
+    const agbMgHa = new Array(cols * rows);
+    let minMgHa = Infinity;
+    let maxMgHa = 0;
+    for (let row = 0; row < rows; row++) {
+      const targetLat = north - (row / (rows - 1)) * (north - south);
+      let srcRow = Math.round(
+        ((targetLat - nativeLat[0]) / (nativeLat[nRows - 1] - nativeLat[0])) * (nRows - 1),
+      );
+      srcRow = Math.min(nRows - 1, Math.max(0, srcRow));
+      for (let col = 0; col < cols; col++) {
+        const targetLon = west + (col / (cols - 1)) * (east - west);
+        let srcCol = Math.round(
+          ((targetLon - nativeLon[0]) / (nativeLon[nCols - 1] - nativeLon[0])) * (nCols - 1),
+        );
+        srcCol = Math.min(nCols - 1, Math.max(0, srcCol));
+        const raw = nativeAgb[srcRow * nCols + srcCol];
+        const value = Number.isFinite(raw) ? raw : 0;
+        agbMgHa[row * cols + col] = value;
+        if (value > 0) {
+          if (value < minMgHa) minMgHa = value;
+          if (value > maxMgHa) maxMgHa = value;
+        }
+      }
+    }
+    if (!Number.isFinite(minMgHa)) minMgHa = 0;
+
+    const data = {
+      bbox: [west, south, east, north],
+      cols,
+      rows,
+      agbMgHa,
+      minMgHa,
+      maxMgHa,
+      year: ESA_AGB_YEAR,
+    };
+    biomassCache.set(key, { at: Date.now(), data });
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });

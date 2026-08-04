@@ -9,7 +9,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { heightColor } from "./height-color-ramp";
+import { heatColor } from "./height-color-ramp";
 
 export type MangroveHeightmap = {
   bbox: [west: number, south: number, east: number, north: number];
@@ -18,6 +18,15 @@ export type MangroveHeightmap = {
   heightCm: number[];
   minCm: number;
   maxCm: number;
+};
+
+export type MangroveBiomass = {
+  bbox: [west: number, south: number, east: number, north: number];
+  cols: number;
+  rows: number;
+  agbMgHa: number[];
+  minMgHa: number;
+  maxMgHa: number;
 };
 
 const METERS_PER_DEGREE_LAT = 111_320;
@@ -40,10 +49,16 @@ export type PointCloudSceneHandle = {
 export function createPointCloudScene(
   container: HTMLElement,
   data: MangroveHeightmap,
-  options: { reduceMotion: boolean },
+  options: { reduceMotion: boolean; biomass?: MangroveBiomass | null },
 ): PointCloudSceneHandle {
   const { cols, rows, heightCm, bbox, maxCm } = data;
   const [west, south, east, north] = bbox;
+  // Biomassa (ESA CCI) só colore por célula se vier na MESMA grade da altura
+  // (mesmo bbox, mesmo cols/rows pedidos ao back-end) — sem isso não dá pra
+  // combinar os dois datasets ponto a ponto.
+  const biomass = options.biomass;
+  const biomassAligned =
+    !!biomass && biomass.cols === cols && biomass.rows === rows ? biomass : null;
   const centerLat = (south + north) / 2;
   const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
 
@@ -64,7 +79,8 @@ export function createPointCloudScene(
       const lng = west + (col / (cols - 1)) * (east - west);
       const x = (lng - (west + east) / 2) * metersPerDegreeLng;
 
-      const cm = heightCm[row * cols + col];
+      const cellIndex = row * cols + col;
+      const cm = heightCm[cellIndex];
       const heightSceneM = (cm / 100) * verticalScale;
       const pointCount =
         cm > 0
@@ -74,10 +90,19 @@ export function createPointCloudScene(
             )
           : 1;
 
+      // Com biomassa alinhada: altura = posição vertical (NASA), cor =
+      // concentração de carbono (ESA) — mesma cor pra coluna inteira, já que
+      // biomassa é um valor por célula, não por ponto. Sem biomassa: mantém o
+      // gradiente por altura de antes (fallback, um só dado disponível).
+      const cellBiomassT = biomassAligned
+        ? biomassAligned.agbMgHa[cellIndex] / Math.max(biomassAligned.maxMgHa, 1)
+        : null;
+
       for (let p = 0; p < pointCount; p++) {
         const y = pointCount > 1 ? (p / (pointCount - 1)) * heightSceneM : 0;
         positions.push(x, y, z);
-        const color = heightColor(maxHeightM > 0 ? y / (maxHeightM * verticalScale) : 0);
+        const t = cellBiomassT ?? (maxHeightM > 0 ? y / (maxHeightM * verticalScale) : 0);
+        const color = heatColor(t);
         colors.push(color.r, color.g, color.b);
       }
     }

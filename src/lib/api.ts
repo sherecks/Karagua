@@ -129,3 +129,35 @@ export function fetchMangroveHeightmap(bbox: {
   if (bbox.rows) params.set("rows", String(bbox.rows));
   return request<MangroveHeightmap>(`/mangrove-heightmap?${params.toString()}`);
 }
+
+export type MangroveBiomass = {
+  bbox: [west: number, south: number, east: number, north: number];
+  cols: number;
+  rows: number;
+  agbMgHa: number[];
+  minMgHa: number;
+  maxMgHa: number;
+  year: number;
+};
+
+/** Grade real de biomassa acima do solo (Mg/ha) na mesma área — ESA CCI
+ *  Biomass, floresta em geral (não específico de manguezal), via THREDDS/ncss
+ *  da CEDA. Ver api/index.js:/mangrove-biomass. */
+export function fetchMangroveBiomass(bbox: {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  cols?: number;
+  rows?: number;
+}) {
+  const params = new URLSearchParams({
+    west: String(bbox.west),
+    south: String(bbox.south),
+    east: String(bbox.east),
+    north: String(bbox.north),
+  });
+  if (bbox.cols) params.set("cols", String(bbox.cols));
+  if (bbox.rows) params.set("rows", String(bbox.rows));
+  return request<MangroveBiomass>(`/mangrove-biomass?${params.toString()}`);
+}

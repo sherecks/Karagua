@@ -37,7 +37,7 @@ export function Mapa3DPage() {
         </Link>
         <div className="flex items-center gap-3 md:gap-6">
           <span className="hidden md:inline text-label font-semibold tracking-[0.12em] uppercase text-white">
-            Terreno 3D · Altura do dossel
+            Terreno 3D · Altura e biomassa
           </span>
           <Link
             to="/mapa"

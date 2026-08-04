@@ -20,12 +20,13 @@ function sampleTable(stops: number[], t: number): number {
 }
 
 /**
- * Cor por altura normalizada (0 = nível do mar/sem manguezal, 1 = altura
- * máxima real da área recortada). Retorna uma instância de Color reutilizável
- * pra evitar alocar um objeto novo por ponto em nuvens de ~250 mil pontos.
+ * Cor por intensidade normalizada (0 = nível do mar/sem manguezal ou sem
+ * biomassa, 1 = máximo real da área recortada — altura ou biomassa, o que
+ * estiver mapeado). Retorna uma instância de Color reutilizável pra evitar
+ * alocar um objeto novo por ponto em nuvens de ~250 mil pontos.
  */
 const scratch = new Color();
-export function heightColor(t: number): Color {
+export function heatColor(t: number): Color {
   scratch.setRGB(sampleTable(STOPS_R, t), sampleTable(STOPS_G, t), sampleTable(STOPS_B, t));
   return scratch;
 }
