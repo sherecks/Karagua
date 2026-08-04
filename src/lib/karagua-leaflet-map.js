@@ -17,9 +17,6 @@ class KaraguaLeafletMap extends HTMLElement {
     this._windRaf = 0;
     this._windParticles = null;
     this._windActive = false;
-    this._mangroveLayer = null;
-    this._mangroveActive = false;
-    this._mangroveRequestId = 0;
     this._gmwExtentLayer = null;
     this._gmwExtentActive = false;
     this._gmwExtentRequestId = 0;
@@ -44,7 +41,6 @@ class KaraguaLeafletMap extends HTMLElement {
   disconnectedCallback() {
     this._stopWindAnimation();
     if (this._map) {
-      this._map.off("moveend zoomend", this._refreshMangrove, this);
       this._map.off("moveend zoomend", this._refreshGmwExtent, this);
       this._map.remove();
     }
@@ -261,19 +257,16 @@ class KaraguaLeafletMap extends HTMLElement {
           filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
         }
         .wind-canvas { pointer-events: none; }
-        /* blur amacia os pixels do raster (30m) em manchas, tipo heatmap; o
-           filtro SVG #mangrove-heat (definido abaixo) converte a escala de
-           cinza (já esticada via renderingRule Stretch/DRA na URL) num
-           gradiente azul→verde→amarelo→vermelho por concentração. Sem
-           canvas/leitura de pixel, então não depende de CORS. */
-        .mangrove-tint {
-          filter: blur(6px) url(#mangrove-heat);
-        }
-        /* Cor já vem pronta do canvas (verde da marca só nas células
-           classificadas como manguezal) — o blur só amacia o serrilhado da
-           grade categórica, sem precisar de filtro SVG de recorte. */
-        .mangrove-extent-tint {
-          filter: blur(4px);
+        /* Mapa de calor de concentração (GMW): a densidade já vem calculada
+           em JS (_gmwDensity, tabela de somas) como cinza+alfa por célula —
+           o blur aqui só amacia o serrilhado da grade (a densidade em si já
+           é o gradiente, blur sozinho numa máscara binária não bastava: o
+           miolo de qualquer mancha mais larga que o raio do blur saturava
+           sempre em vermelho, sem variar). O filtro SVG #concentration-heat
+           converte essa intensidade num gradiente azul→verde→amarelo→
+           vermelho: vermelho/amarelo = concentração alta, azul = baixa. */
+        .gmw-heat-tint {
+          filter: blur(3px) url(#concentration-heat);
         }
         .layer-credit {
           display: block;
@@ -403,7 +396,7 @@ class KaraguaLeafletMap extends HTMLElement {
         }
       </style>
       <svg width="0" height="0" style="position:absolute">
-        <filter id="mangrove-heat" color-interpolation-filters="sRGB">
+        <filter id="concentration-heat" color-interpolation-filters="sRGB">
           <feComponentTransfer>
             <feFuncR type="table" tableValues="0.08 0.08 0.16 0.82 0.90 0.78"/>
             <feFuncG type="table" tableValues="0.24 0.55 0.71 0.82 0.47 0.12"/>
@@ -452,16 +445,11 @@ class KaraguaLeafletMap extends HTMLElement {
               <span>Vento</span>
             </label>
             <label class="layer-toggle">
-              <input type="checkbox" id="mangrove-toggle">
-              <span>Cobertura de manguezal</span>
-            </label>
-            <span class="layer-credit">Altura do dossel · NASA/ORNL DAAC (Simard et al.)</span>
-            <label class="layer-toggle">
               <input type="checkbox" id="gmw-extent-toggle">
-              <span>Extensão real do manguezal (GMW)</span>
+              <span>Concentração de manguezal</span>
             </label>
-            <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m (2020)</span>
-            <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D →</button>
+            <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m</span>
+            <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
           </div>
         </div>
         <div class="panel-divider"></div>
@@ -513,17 +501,11 @@ class KaraguaLeafletMap extends HTMLElement {
       },
     ).addTo(this._map);
 
-    // Panes próprios abaixo dos marcadores e sem eventos: vento e manguezal
-    // nunca bloqueiam o clique nos pontos de interesse. Extensão (GMW) fica
-    // abaixo da altura (300) — é uma máscara mais "de base", a altura desenha
-    // o calor por cima dela. Manguezal fica abaixo do vento (350) para as
-    // partículas desenharem por cima do tint verde.
+    // Panes próprios abaixo dos marcadores e sem eventos: vento e a camada de
+    // concentração nunca bloqueiam o clique nos pontos de interesse.
     const gmwPane = this._map.createPane("gmwPane");
     gmwPane.style.zIndex = 290;
     gmwPane.style.pointerEvents = "none";
-    const mangrovePane = this._map.createPane("mangrovePane");
-    mangrovePane.style.zIndex = 300;
-    mangrovePane.style.pointerEvents = "none";
     const windPane = this._map.createPane("windPane");
     windPane.style.zIndex = 350;
     windPane.style.pointerEvents = "none";
@@ -534,7 +516,6 @@ class KaraguaLeafletMap extends HTMLElement {
     this._initSideToggle();
     this._initSectionToggles();
     this._initWindToggle();
-    this._initMangroveToggle();
     this._initGmwExtentToggle();
     this._initAreaSelectTool();
 
@@ -859,11 +840,11 @@ class KaraguaLeafletMap extends HTMLElement {
     toggle.addEventListener("change", () => void this._setWindVisible(toggle.checked));
   }
 
-  // Mapa em P&B enquanto vento, altura OU extensão do manguezal estiverem
+  // Mapa em P&B enquanto vento OU concentração de manguezal estiverem
   // ativos (qualquer um já justifica o contraste); só volta a cor quando
-  // todos desligarem.
+  // os dois desligarem.
   _updateBaseFilter() {
-    const active = this._windActive || this._mangroveActive || this._gmwExtentActive;
+    const active = this._windActive || this._gmwExtentActive;
     this._map.getPane("tilePane").style.filter = active ? "grayscale(1) contrast(0.95)" : "";
   }
 
@@ -1094,100 +1075,14 @@ class KaraguaLeafletMap extends HTMLElement {
     return group;
   }
 
-  // ── Camada de cobertura de manguezal (NASA/ORNL DAAC) ────────────────────
-  // ImageServer público (Simard et al., altura de dossel via satélite): sem
-  // chave, sem servidor nosso no meio. O exportImage em png32 já devolve alpha
-  // real (0 fora de manguezal, 255 dentro) — só recolorimos via CSS filter
-  // (.mangrove-tint), sem canvas/pixel read (evita a falta de header CORS).
-  // Camada de referência (imagem de satélite, não tempo real); reconsulta a
-  // cada moveend/zoomend para acompanhar a área visível.
-  _initMangroveToggle() {
-    const toggle = this.shadowRoot.getElementById("mangrove-toggle");
-    if (!toggle) return;
-    toggle.addEventListener("change", () => void this._setMangroveVisible(toggle.checked));
-  }
-
-  async _setMangroveVisible(on) {
-    this._mangroveActive = on;
-    if (!on) {
-      this._map.off("moveend zoomend", this._refreshMangrove, this);
-      if (this._mangroveLayer) {
-        this._map.removeLayer(this._mangroveLayer);
-        this._mangroveLayer = null;
-      }
-      this._updateBaseFilter();
-      return;
-    }
-    this._map.on("moveend zoomend", this._refreshMangrove, this);
-    this._updateBaseFilter();
-    await this._refreshMangrove();
-  }
-
-  // Rendering rule Stretch+DRA: sem isso os valores de altura de dossel na
-  // baía ficam espremidos perto do preto (0-135 de 255, testado); com DRA o
-  // servidor normaliza pelo min/max REAL do recorte em tela, dando o range
-  // cheio (0-255) que o LUT de calor (#mangrove-heat) precisa para variar
-  // de azul (baixo) a vermelho (alto).
-  static MANGROVE_RENDERING_RULE = encodeURIComponent(
-    JSON.stringify({
-      rasterFunction: "Stretch",
-      rasterFunctionArguments: { StretchType: 6, DRA: true, UseGamma: false },
-    }),
-  );
-
-  async _refreshMangrove() {
-    const b = this._map.getBounds();
-    const size = this._map.getSize();
-    const maxSide = 1024;
-    const scale = Math.min(1, maxSide / Math.max(size.x, size.y));
-    const w = Math.round(size.x * scale);
-    const h = Math.round(size.y * scale);
-
-    const url =
-      "https://gis.earthdata.nasa.gov/image/rest/services/C2389107206-ORNL_CLOUD/CMS_Global_Map_Mangrove_Canopy_1665/ImageServer/exportImage" +
-      `?bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}` +
-      `&bboxSR=4326&imageSR=4326&size=${w},${h}&format=png32&f=image` +
-      `&renderingRule=${KaraguaLeafletMap.MANGROVE_RENDERING_RULE}`;
-    const bounds = [
-      [b.getSouth(), b.getWest()],
-      [b.getNorth(), b.getEast()],
-    ];
-
-    // Pré-carrega a imagem nova ANTES de trocar url/bounds no overlay: sem
-    // isso, setBounds redimensiona o <img> pra área nova na hora, mas o
-    // conteúdo ainda é o frame antigo — esticado/distorcido até a imagem nova
-    // chegar. Guard por requestId: se outro refresh começou nesse meio-tempo
-    // (pan/zoom seguinte), descarta este resultado atrasado.
-    const requestId = ++this._mangroveRequestId;
-    await new Promise((resolve) => {
-      const preload = new Image();
-      preload.onload = resolve;
-      preload.onerror = resolve;
-      preload.src = url;
-    });
-    if (requestId !== this._mangroveRequestId) return;
-
-    if (this._mangroveLayer) {
-      this._mangroveLayer.setUrl(url);
-      this._mangroveLayer.setBounds(bounds);
-    } else {
-      this._mangroveLayer = L.imageOverlay(url, bounds, {
-        pane: "mangrovePane",
-        className: "mangrove-tint",
-        opacity: 0.85,
-        interactive: false,
-      }).addTo(this._map);
-    }
-  }
-
-  // ── Extensão real do manguezal (Global Mangrove Watch v4) ─────────────────
-  // Diferente da altura (NASA): aqui a pergunta é "esse pixel É manguezal ou
-  // não" — Sentinel-2 a 10m, remapeado especificamente pra capturar franja e
-  // manguezal ripário em canais estreitos. Por isso passa pela nossa API
-  // (decodifica o GeoTIFF categórico no servidor) e o resultado vira uma
-  // máscara pintada em canvas aqui no cliente (cor só nas células
-  // classificadas como manguezal), não uma imagem carregada direto de outro
-  // serviço como a camada de altura da NASA.
+  // ── Mapa de calor de concentração de manguezal (Global Mangrove Watch v4) ─
+  // Sentinel-2 a 10m, remapeado especificamente pra capturar franja e
+  // manguezal ripário em canais estreitos. Passa pela nossa API (decodifica
+  // o GeoTIFF categórico no servidor) e o resultado (máscara binária: é/não é
+  // manguezal) vira densidade local por vizinhança (_gmwDensity) pintada em
+  // canvas aqui no cliente — o filtro #concentration-heat (.gmw-heat-tint)
+  // então converte essa densidade num gradiente de calor de verdade, não um
+  // preenchimento sólido de uma cor só.
   _initGmwExtentToggle() {
     const toggle = this.shadowRoot.getElementById("gmw-extent-toggle");
     if (!toggle) return;
@@ -1236,18 +1131,31 @@ class KaraguaLeafletMap extends HTMLElement {
     }
     if (requestId !== this._gmwExtentRequestId) return;
 
+    // Densidade local (0-1) por célula via tabela de somas — não é só "tem
+    // manguezal aqui", é "que fração da vizinhança tem manguezal": célula
+    // isolada tem vizinhança majoritariamente vazia (densidade baixa), célula
+    // no meio de uma mancha grande tem vizinhança quase toda ligada
+    // (densidade alta). Testado: pintar a máscara binária opaca e só confiar
+    // no blur do CSS não funciona — qualquer mancha mais larga que o raio do
+    // blur fica com o miolo inteiro saturado (sempre vermelho, sem gradiente).
+    // A densidade calculada aqui já é o gradiente; o blur do CSS só amacia o
+    // serrilhado da grade.
+    const density = KaraguaLeafletMap._gmwDensity(data.mangrove, data.cols, data.rows);
+
     const canvas = document.createElement("canvas");
     canvas.width = data.cols;
     canvas.height = data.rows;
     const ctx = canvas.getContext("2d");
     const img = ctx.createImageData(data.cols, data.rows);
-    for (let i = 0; i < data.mangrove.length; i++) {
-      if (!data.mangrove[i]) continue;
+    for (let i = 0; i < density.length; i++) {
+      const t = density[i];
+      if (t <= 0) continue;
       const o = i * 4;
-      img.data[o] = 39; // k-color-positive (#27ae60)
-      img.data[o + 1] = 174;
-      img.data[o + 2] = 96;
-      img.data[o + 3] = 200;
+      const gray = Math.round(t * 255);
+      img.data[o] = gray;
+      img.data[o + 1] = gray;
+      img.data[o + 2] = gray;
+      img.data[o + 3] = Math.min(255, Math.round(25 + t * 230));
     }
     ctx.putImageData(img, 0, 0);
     const url = canvas.toDataURL("image/png");
@@ -1262,7 +1170,7 @@ class KaraguaLeafletMap extends HTMLElement {
     } else {
       this._gmwExtentLayer = L.imageOverlay(url, bounds, {
         pane: "gmwPane",
-        className: "mangrove-extent-tint",
+        className: "gmw-heat-tint",
         opacity: 0.85,
         interactive: false,
       }).addTo(this._map);
@@ -1272,6 +1180,43 @@ class KaraguaLeafletMap extends HTMLElement {
     if (credit) {
       credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · Global Mangrove Watch v4 (${data.year})`;
     }
+  }
+
+  // Densidade local por tabela de somas (summed-area table): soma numa janela
+  // qualquer em O(1) depois de um pré-cálculo O(n), então dá pra fazer a
+  // "vizinhança" de cada célula sem reprocessar tudo por célula (importante:
+  // roda a cada moveend/zoomend, grade de até 300×300). Raio fixo em células
+  // (não em metros) — a grade já encolhe/cresce com o zoom, então o raio
+  // acompanha a escala visível automaticamente.
+  static _GMW_DENSITY_RADIUS = 5;
+  static _gmwDensity(mask, cols, rows) {
+    const radius = KaraguaLeafletMap._GMW_DENSITY_RADIUS;
+    const stride = cols + 1;
+    const sum = new Float64Array(stride * (rows + 1));
+    for (let r = 0; r < rows; r++) {
+      let rowSum = 0;
+      for (let c = 0; c < cols; c++) {
+        rowSum += mask[r * cols + c];
+        sum[(r + 1) * stride + (c + 1)] = sum[r * stride + (c + 1)] + rowSum;
+      }
+    }
+    const density = new Float32Array(cols * rows);
+    for (let r = 0; r < rows; r++) {
+      const r0 = Math.max(0, r - radius);
+      const r1 = Math.min(rows - 1, r + radius);
+      for (let c = 0; c < cols; c++) {
+        const c0 = Math.max(0, c - radius);
+        const c1 = Math.min(cols - 1, c + radius);
+        const total =
+          sum[(r1 + 1) * stride + (c1 + 1)] -
+          sum[r0 * stride + (c1 + 1)] -
+          sum[(r1 + 1) * stride + c0] +
+          sum[r0 * stride + c0];
+        const area = (r1 - r0 + 1) * (c1 - c0 + 1);
+        density[r * cols + c] = total / area;
+      }
+    }
+    return density;
   }
 
   // ── Recorte de área para o terreno 3D ─────────────────────────────────────
