@@ -7,6 +7,9 @@ const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const sharp = require("sharp");
 const { NetCDFReader } = require("netcdfjs");
+const { fromUrl: geotiffFromUrl, fromArrayBuffer: geotiffFromArrayBuffer } = require("geotiff");
+const unzipper = require("unzipper");
+const { Readable, PassThrough } = require("stream");
 
 const {
   DATABASE_URL,
@@ -416,6 +419,239 @@ app.get("/mangrove-biomass", async (req, res) => {
       year: ESA_AGB_YEAR,
     };
     biomassCache.set(key, { at: Date.now(), data });
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ── Extensão real do manguezal (MapBiomas) — máscara de classificação ──────
+// NASA dá altura e ESA dá biomassa geral, mas nenhum dos dois responde "aqui
+// É manguezal ou não" — é exatamente o que a classificação anual do
+// MapBiomas responde (classe 5 = Manguezal), e é a fonte mais citada em
+// estudos revisados por pares sobre o tema no Brasil. O mosaico anual do
+// Brasil inteiro fica num bucket público do Google Cloud Storage como
+// Cloud-Optimized GeoTIFF (COG): sem chave, sem login, sem conta do Earth
+// Engine — a lib `geotiff` faz range requests HTTP e lê só os blocos da
+// área pedida (~poucos KB), nunca baixa o arquivo inteiro (~1GB, Brasil).
+const MAPBIOMAS_YEAR = 2023; // ano mais recente confirmado disponível nesse caminho
+const MAPBIOMAS_MANGROVE_CLASS = 5;
+const MAPBIOMAS_URL = (year) =>
+  `https://storage.googleapis.com/mapbiomas-public/initiatives/brasil/collection_9/lclu/coverage/brasil_coverage_${year}.tif`;
+const METERS_PER_DEGREE_LAT = 111_320;
+
+// A leitura do cabeçalho/IFD do COG remoto (~700ms) é reaproveitada entre
+// requisições — só a janela pedida é buscada de novo a cada bbox diferente.
+// IMPORTANTE: readRasters precisa ser chamado no objeto GeoTIFF (multi-IFD),
+// não em getImage() — só assim ele escolhe automaticamente a overview certa
+// pro tamanho pedido. Testado: via getImage() (força resolução plena, 155
+// mil x 159 mil px) uma janela pequena não retornou nem em 2 minutos; via
+// GeoTIFF direto, a mesma janela leva ~3,5s.
+const mapbiomasTiffCache = new Map();
+async function getMapbiomasTiff(year) {
+  const hit = mapbiomasTiffCache.get(year);
+  if (hit) return hit;
+  const promise = geotiffFromUrl(MAPBIOMAS_URL(year));
+  mapbiomasTiffCache.set(year, promise);
+  promise.catch(() => mapbiomasTiffCache.delete(year));
+  return promise;
+}
+
+const extentCache = new Map();
+
+app.get("/mangrove-extent", async (req, res) => {
+  const west = Number(req.query.west);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const north = Number(req.query.north);
+  if (![west, south, east, north].every(Number.isFinite)) {
+    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+  }
+  const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
+  const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
+  const year = Math.round(Number(req.query.year)) || MAPBIOMAS_YEAR;
+
+  const key = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}:${cols}x${rows}:${year}`;
+  const hit = extentCache.get(key);
+  if (hit && Date.now() - hit.at < HEIGHTMAP_TTL_MS) {
+    return res.set("Cache-Control", "public, max-age=3600").json({ data: hit.data });
+  }
+
+  try {
+    const tiff = await getMapbiomasTiff(year);
+    const [classes] = await tiff.readRasters({
+      bbox: [west, south, east, north],
+      width: cols,
+      height: rows,
+      resampleMethod: "nearest", // dado categórico: interpolar geraria classes que não existem
+    });
+
+    const total = cols * rows;
+    const mangrove = new Array(total);
+    const centerLat = (south + north) / 2;
+    const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
+    const cellAreaM2 =
+      ((east - west) / cols) *
+      metersPerDegreeLng *
+      (((north - south) / rows) * METERS_PER_DEGREE_LAT);
+    let mangroveCells = 0;
+    for (let i = 0; i < total; i++) {
+      const isMangrove = classes[i] === MAPBIOMAS_MANGROVE_CLASS ? 1 : 0;
+      mangrove[i] = isMangrove;
+      mangroveCells += isMangrove;
+    }
+    const areaHa = Math.round((mangroveCells * cellAreaM2) / 10_000);
+
+    const data = { bbox: [west, south, east, north], cols, rows, mangrove, areaHa, year };
+    extentCache.set(key, { at: Date.now(), data });
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ── Extensão real do manguezal (Global Mangrove Watch v4, 2020) ────────────
+// Segunda fonte independente de extensão (a primeira é o MapBiomas acima):
+// Sentinel-2 a 10m, remapeado especificamente para capturar manguezal de
+// franja e ripário em canais estreitos — mais fino que o MapBiomas (30m).
+// Sem chave, sem login (CC BY 4.0, Zenodo) — mas o arquivo publicado é 1
+// único ZIP de ~180MB com o mundo inteiro, não um serviço de recorte como os
+// outros. Truque: o ZIP na verdade contém 1647 tiles de 1°×1° já separados
+// (~500KB-2MB cada); lendo só o índice central do ZIP via HTTP Range (nunca
+// baixando o arquivo inteiro) a gente acha e busca só a tile da nossa área.
+const GMW_ZIP_URL =
+  "https://zenodo.org/api/records/12756047/files/gmw_mng_2020_v4019_gtiff.zip/content";
+const GMW_YEAR = 2020;
+// Resolução fixa do cache em memória por tile (1°×1° → ~55m/px): decodifica
+// 1x (o passo lento, ~10s, é reler+inflar+decodificar o GeoTIFF da tile) e
+// guarda o array bruto — todo request depois só amostra esse array em JS
+// puro (testado: cai de segundos por request pra 1-3ms).
+const GMW_TILE_GRID = 2000;
+
+function gmwUrlSource(url) {
+  return {
+    size: async () => Number((await fetch(url, { method: "HEAD" })).headers.get("content-length")),
+    stream: (offset, length) => {
+      const end = length ? offset + length - 1 : "";
+      const passthrough = new PassThrough();
+      fetch(url, { headers: { range: `bytes=${offset}-${end}` } })
+        .then((res) => Readable.fromWeb(res.body).pipe(passthrough))
+        .catch((e) => passthrough.emit("error", e));
+      return passthrough;
+    },
+  };
+}
+
+let gmwDirectoryPromise = null;
+function getGmwDirectory() {
+  if (!gmwDirectoryPromise) {
+    gmwDirectoryPromise = unzipper.Open.custom(gmwUrlSource(GMW_ZIP_URL));
+    gmwDirectoryPromise.catch(() => {
+      gmwDirectoryPromise = null;
+    });
+  }
+  return gmwDirectoryPromise;
+}
+
+// Convenção do nome da tile (confirmada testando contra o arquivo real): o
+// número após S é o extremo NORTE do quadrado 1°×1° (ele se estende 1° pra
+// SUL a partir dali); o número após W é o extremo OESTE (se estende 1° pro
+// LESTE). Ex.: S26W049 cobre exatamente lat [-27,-26) × lon [-49,-48).
+function gmwTileName(lat, lon) {
+  const tileNorth = Math.ceil(lat);
+  const tileWest = Math.floor(lon);
+  const latLetter = tileNorth <= 0 ? "S" : "N";
+  const lonLetter = tileWest < 0 ? "W" : "E";
+  const latNum = String(Math.abs(tileNorth)).padStart(2, "0");
+  const lonNum = String(Math.abs(tileWest)).padStart(3, "0");
+  return `GMW_${latLetter}${latNum}${lonLetter}${lonNum}_v4019_mng.tif`;
+}
+
+function gmwTilesForBbox(west, south, east, north) {
+  const names = [];
+  for (let tileNorth = Math.floor(south) + 1; tileNorth <= Math.ceil(north); tileNorth++) {
+    const tileSouth = tileNorth - 1;
+    if (tileSouth >= north || tileNorth <= south) continue;
+    for (let tileWest = Math.floor(west); tileWest < Math.ceil(east); tileWest++) {
+      const tileEast = tileWest + 1;
+      if (tileWest >= east || tileEast <= west) continue;
+      names.push(gmwTileName(tileNorth - 0.5, tileWest + 0.5)); // ponto central evita ambiguidade de borda
+    }
+  }
+  return names;
+}
+
+const gmwTileGridCache = new Map(); // nome da tile -> Promise<{ grid, bbox } | null>
+function getGmwTileGrid(name) {
+  if (gmwTileGridCache.has(name)) return gmwTileGridCache.get(name);
+  const promise = (async () => {
+    const directory = await getGmwDirectory();
+    const entry = directory.files.find((f) => f.path === name);
+    if (!entry) return null; // tile não existe no dataset = sem manguezal ali (é esparso, só existem tiles com dado)
+    const buf = await entry.buffer();
+    const tiff = await geotiffFromArrayBuffer(
+      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    );
+    const image = await tiff.getImage();
+    const [grid] = await image.readRasters({
+      width: GMW_TILE_GRID,
+      height: GMW_TILE_GRID,
+      resampleMethod: "nearest",
+    });
+    return { grid, bbox: image.getBoundingBox() };
+  })();
+  gmwTileGridCache.set(name, promise);
+  promise.catch(() => gmwTileGridCache.delete(name));
+  return promise;
+}
+
+app.get("/mangrove-extent-gmw", async (req, res) => {
+  const west = Number(req.query.west);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const north = Number(req.query.north);
+  if (![west, south, east, north].every(Number.isFinite)) {
+    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+  }
+  const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
+  const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
+
+  try {
+    const tileNames = gmwTilesForBbox(west, south, east, north);
+    const tiles = (await Promise.all(tileNames.map(getGmwTileGrid))).filter(Boolean);
+
+    const mangrove = new Array(cols * rows).fill(0);
+    for (let row = 0; row < rows; row++) {
+      const lat = north - (row / (rows - 1)) * (north - south);
+      for (let col = 0; col < cols; col++) {
+        const lon = west + (col / (cols - 1)) * (east - west);
+        for (const t of tiles) {
+          const [tw, ts, te, tn] = t.bbox;
+          if (lon < tw || lon > te || lat < ts || lat > tn) continue;
+          const srcRow = Math.min(
+            GMW_TILE_GRID - 1,
+            Math.max(0, Math.round(((tn - lat) / (tn - ts)) * (GMW_TILE_GRID - 1))),
+          );
+          const srcCol = Math.min(
+            GMW_TILE_GRID - 1,
+            Math.max(0, Math.round(((lon - tw) / (te - tw)) * (GMW_TILE_GRID - 1))),
+          );
+          if (t.grid[srcRow * GMW_TILE_GRID + srcCol]) mangrove[row * cols + col] = 1;
+          break;
+        }
+      }
+    }
+
+    const centerLat = (south + north) / 2;
+    const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
+    const cellAreaM2 =
+      ((east - west) / cols) *
+      metersPerDegreeLng *
+      (((north - south) / rows) * METERS_PER_DEGREE_LAT);
+    const mangroveCells = mangrove.reduce((s, v) => s + v, 0);
+    const areaHa = Math.round((mangroveCells * cellAreaM2) / 10_000);
+
+    const data = { bbox: [west, south, east, north], cols, rows, mangrove, areaHa, year: GMW_YEAR };
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });

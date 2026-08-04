@@ -20,6 +20,12 @@ class KaraguaLeafletMap extends HTMLElement {
     this._mangroveLayer = null;
     this._mangroveActive = false;
     this._mangroveRequestId = 0;
+    this._mangroveExtentLayer = null;
+    this._mangroveExtentActive = false;
+    this._mangroveExtentRequestId = 0;
+    this._gmwExtentLayer = null;
+    this._gmwExtentActive = false;
+    this._gmwExtentRequestId = 0;
     this._areaSelectActive = false;
     this._areaSelectFirstCorner = null;
     this._areaSelectRect = null;
@@ -42,6 +48,8 @@ class KaraguaLeafletMap extends HTMLElement {
     this._stopWindAnimation();
     if (this._map) {
       this._map.off("moveend zoomend", this._refreshMangrove, this);
+      this._map.off("moveend zoomend", this._refreshMangroveExtent, this);
+      this._map.off("moveend zoomend", this._refreshGmwExtent, this);
       this._map.remove();
     }
   }
@@ -237,6 +245,12 @@ class KaraguaLeafletMap extends HTMLElement {
         .mangrove-tint {
           filter: blur(6px) url(#mangrove-heat);
         }
+        /* Cor já vem pronta do canvas (verde da marca só nas células
+           classificadas como manguezal) — o blur só amacia o serrilhado da
+           grade categórica, sem precisar de filtro SVG de recorte. */
+        .mangrove-extent-tint {
+          filter: blur(4px);
+        }
         .layer-credit {
           display: block;
           font-size: 10px;
@@ -404,6 +418,16 @@ class KaraguaLeafletMap extends HTMLElement {
             <span>Cobertura de manguezal</span>
           </label>
           <span class="layer-credit">Altura do dossel · NASA/ORNL DAAC (Simard et al.)</span>
+          <label class="layer-toggle">
+            <input type="checkbox" id="mangrove-extent-toggle">
+            <span>Extensão real do manguezal (MapBiomas)</span>
+          </label>
+          <span class="layer-credit" id="mangrove-extent-credit">Classificação de uso da terra · MapBiomas Coleção 9 (2023)</span>
+          <label class="layer-toggle">
+            <input type="checkbox" id="gmw-extent-toggle">
+            <span>Extensão real do manguezal (GMW)</span>
+          </label>
+          <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m (2020)</span>
           <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D →</button>
         </div>
         <div class="panel-divider"></div>
@@ -451,8 +475,16 @@ class KaraguaLeafletMap extends HTMLElement {
     ).addTo(this._map);
 
     // Panes próprios abaixo dos marcadores e sem eventos: vento e manguezal
-    // nunca bloqueiam o clique nos pontos de interesse. Manguezal fica abaixo
-    // do vento (350) para as partículas desenharem por cima do tint verde.
+    // nunca bloqueiam o clique nos pontos de interesse. Extensão (MapBiomas)
+    // fica abaixo da altura (300) — é uma máscara mais "de base", a altura
+    // desenha o calor por cima dela. Manguezal fica abaixo do vento (350)
+    // para as partículas desenharem por cima do tint verde.
+    const mapbiomasPane = this._map.createPane("mapbiomasPane");
+    mapbiomasPane.style.zIndex = 280;
+    mapbiomasPane.style.pointerEvents = "none";
+    const gmwPane = this._map.createPane("gmwPane");
+    gmwPane.style.zIndex = 290;
+    gmwPane.style.pointerEvents = "none";
     const mangrovePane = this._map.createPane("mangrovePane");
     mangrovePane.style.zIndex = 300;
     mangrovePane.style.pointerEvents = "none";
@@ -466,6 +498,8 @@ class KaraguaLeafletMap extends HTMLElement {
     this._initSideToggle();
     this._initWindToggle();
     this._initMangroveToggle();
+    this._initMangroveExtentToggle();
+    this._initGmwExtentToggle();
     this._initAreaSelectTool();
 
     this.dispatchEvent(
@@ -776,10 +810,15 @@ class KaraguaLeafletMap extends HTMLElement {
     toggle.addEventListener("change", () => void this._setWindVisible(toggle.checked));
   }
 
-  // Mapa em P&B enquanto vento OU manguezal estiverem ativos (qualquer um dos
-  // dois já justifica o contraste); só volta a cor quando os dois desligarem.
+  // Mapa em P&B enquanto vento, altura OU extensão do manguezal estiverem
+  // ativos (qualquer um já justifica o contraste); só volta a cor quando
+  // todos desligarem.
   _updateBaseFilter() {
-    const active = this._windActive || this._mangroveActive;
+    const active =
+      this._windActive ||
+      this._mangroveActive ||
+      this._mangroveExtentActive ||
+      this._gmwExtentActive;
     this._map.getPane("tilePane").style.filter = active ? "grayscale(1) contrast(0.95)" : "";
   }
 
@@ -1093,6 +1132,196 @@ class KaraguaLeafletMap extends HTMLElement {
         opacity: 0.85,
         interactive: false,
       }).addTo(this._map);
+    }
+  }
+
+  // ── Extensão real do manguezal (MapBiomas) ────────────────────────────────
+  // Diferente da altura (NASA): aqui a pergunta é "esse pixel É manguezal ou
+  // não" — classificação anual de uso da terra, não um raster de estilo já
+  // pronto. Por isso passa pela nossa API (decodifica o GeoTIFF categórico
+  // no servidor) e o resultado vira uma máscara pintada em canvas aqui no
+  // cliente (verde da marca só nas células classificadas como manguezal),
+  // não uma imagem carregada direto de outro serviço como a camada da NASA.
+  _initMangroveExtentToggle() {
+    const toggle = this.shadowRoot.getElementById("mangrove-extent-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("change", () => void this._setMangroveExtentVisible(toggle.checked));
+  }
+
+  async _setMangroveExtentVisible(on) {
+    this._mangroveExtentActive = on;
+    if (!on) {
+      this._map.off("moveend zoomend", this._refreshMangroveExtent, this);
+      if (this._mangroveExtentLayer) {
+        this._map.removeLayer(this._mangroveExtentLayer);
+        this._mangroveExtentLayer = null;
+      }
+      this._updateBaseFilter();
+      return;
+    }
+    this._map.on("moveend zoomend", this._refreshMangroveExtent, this);
+    this._updateBaseFilter();
+    await this._refreshMangroveExtent();
+  }
+
+  async _refreshMangroveExtent() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (!apiUrl) return;
+
+    const b = this._map.getBounds();
+    const size = this._map.getSize();
+    // Máscara categórica: não precisa acompanhar a resolução da tela como a
+    // imagem da NASA — uma grade moderada já fica lisa (com o blur do CSS).
+    const maxSide = 300;
+    const scale = Math.min(1, maxSide / Math.max(size.x, size.y));
+    const cols = Math.max(8, Math.round(size.x * scale));
+    const rows = Math.max(8, Math.round(size.y * scale));
+
+    const requestId = ++this._mangroveExtentRequestId;
+    let data;
+    try {
+      const res = await fetch(
+        `${apiUrl.replace(/\/$/, "")}/mangrove-extent?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}&cols=${cols}&rows=${rows}`,
+      );
+      const body = await res.json();
+      if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+      data = body.data;
+    } catch (e) {
+      console.warn("Extensão do manguezal (MapBiomas) indisponível:", e);
+      return;
+    }
+    if (requestId !== this._mangroveExtentRequestId) return;
+
+    // Gerado aqui (canvas → data URI), não baixado de outro serviço: não há
+    // frame antigo pra "esticar" enquanto carrega, então dispensa o preload
+    // usado na camada da NASA — a troca de url já é instantânea.
+    const canvas = document.createElement("canvas");
+    canvas.width = data.cols;
+    canvas.height = data.rows;
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(data.cols, data.rows);
+    for (let i = 0; i < data.mangrove.length; i++) {
+      if (!data.mangrove[i]) continue;
+      const o = i * 4;
+      img.data[o] = 130; // k-deep (#828e1a), verde da marca
+      img.data[o + 1] = 142;
+      img.data[o + 2] = 26;
+      img.data[o + 3] = 200;
+    }
+    ctx.putImageData(img, 0, 0);
+    const url = canvas.toDataURL("image/png");
+
+    const bounds = [
+      [b.getSouth(), b.getWest()],
+      [b.getNorth(), b.getEast()],
+    ];
+    if (this._mangroveExtentLayer) {
+      this._mangroveExtentLayer.setUrl(url);
+      this._mangroveExtentLayer.setBounds(bounds);
+    } else {
+      this._mangroveExtentLayer = L.imageOverlay(url, bounds, {
+        pane: "mapbiomasPane",
+        className: "mangrove-extent-tint",
+        opacity: 0.85,
+        interactive: false,
+      }).addTo(this._map);
+    }
+
+    const credit = this.shadowRoot.getElementById("mangrove-extent-credit");
+    if (credit) {
+      credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · MapBiomas Coleção 9 (${data.year})`;
+    }
+  }
+
+  // ── Extensão real do manguezal (Global Mangrove Watch v4) ─────────────────
+  // Segunda fonte independente de extensão: Sentinel-2 a 10m (o triplo da
+  // resolução do MapBiomas), remapeado especificamente pra capturar franja e
+  // manguezal ripário em canais estreitos. Mesmo mecanismo da camada
+  // MapBiomas (máscara pintada em canvas), cor diferente pra dar pra comparar
+  // as duas fontes ligadas ao mesmo tempo sem confundir uma com a outra.
+  _initGmwExtentToggle() {
+    const toggle = this.shadowRoot.getElementById("gmw-extent-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("change", () => void this._setGmwExtentVisible(toggle.checked));
+  }
+
+  async _setGmwExtentVisible(on) {
+    this._gmwExtentActive = on;
+    if (!on) {
+      this._map.off("moveend zoomend", this._refreshGmwExtent, this);
+      if (this._gmwExtentLayer) {
+        this._map.removeLayer(this._gmwExtentLayer);
+        this._gmwExtentLayer = null;
+      }
+      this._updateBaseFilter();
+      return;
+    }
+    this._map.on("moveend zoomend", this._refreshGmwExtent, this);
+    this._updateBaseFilter();
+    await this._refreshGmwExtent();
+  }
+
+  async _refreshGmwExtent() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (!apiUrl) return;
+
+    const b = this._map.getBounds();
+    const size = this._map.getSize();
+    const maxSide = 300;
+    const scale = Math.min(1, maxSide / Math.max(size.x, size.y));
+    const cols = Math.max(8, Math.round(size.x * scale));
+    const rows = Math.max(8, Math.round(size.y * scale));
+
+    const requestId = ++this._gmwExtentRequestId;
+    let data;
+    try {
+      const res = await fetch(
+        `${apiUrl.replace(/\/$/, "")}/mangrove-extent-gmw?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}&cols=${cols}&rows=${rows}`,
+      );
+      const body = await res.json();
+      if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+      data = body.data;
+    } catch (e) {
+      console.warn("Extensão do manguezal (GMW) indisponível:", e);
+      return;
+    }
+    if (requestId !== this._gmwExtentRequestId) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = data.cols;
+    canvas.height = data.rows;
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(data.cols, data.rows);
+    for (let i = 0; i < data.mangrove.length; i++) {
+      if (!data.mangrove[i]) continue;
+      const o = i * 4;
+      img.data[o] = 39; // k-color-positive (#27ae60) — distinto do verde da marca usado no MapBiomas
+      img.data[o + 1] = 174;
+      img.data[o + 2] = 96;
+      img.data[o + 3] = 200;
+    }
+    ctx.putImageData(img, 0, 0);
+    const url = canvas.toDataURL("image/png");
+
+    const bounds = [
+      [b.getSouth(), b.getWest()],
+      [b.getNorth(), b.getEast()],
+    ];
+    if (this._gmwExtentLayer) {
+      this._gmwExtentLayer.setUrl(url);
+      this._gmwExtentLayer.setBounds(bounds);
+    } else {
+      this._gmwExtentLayer = L.imageOverlay(url, bounds, {
+        pane: "gmwPane",
+        className: "mangrove-extent-tint",
+        opacity: 0.85,
+        interactive: false,
+      }).addTo(this._map);
+    }
+
+    const credit = this.shadowRoot.getElementById("gmw-extent-credit");
+    if (credit) {
+      credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · Global Mangrove Watch v4 (${data.year})`;
     }
   }
 
