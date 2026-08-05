@@ -5,7 +5,6 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
-const sharp = require("sharp");
 const { NetCDFReader } = require("netcdfjs");
 const { fromArrayBuffer: geotiffFromArrayBuffer } = require("geotiff");
 const unzipper = require("unzipper");
@@ -17,6 +16,10 @@ const {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
   CORS_ORIGIN,
+  // Opcional: só o /mangrove-heightmap (TanDEM-X, dataset protegido) precisa.
+  // Sem essa variável o endpoint responde 502 com mensagem clara — não
+  // derruba o resto da API, então fica de fora da checagem obrigatória abaixo.
+  NASA_EARTHDATA_TOKEN,
   PORT = 4000,
 } = process.env;
 
@@ -231,28 +234,93 @@ app.get("/tide-extremes", async (req, res) => {
   }
 });
 
-// ── Altura de dossel do manguezal (NASA/ORNL DAAC) — grade real em cm ──────
-// A camada 2D do mapa recolore o mesmo raster só com filtro CSS (nunca lê
-// pixel, o ImageServer não manda CORS). Aqui é diferente: o fetch acontece no
-// servidor (sem restrição de CORS) e devolvemos números reais em centímetros,
-// prontos pro terreno 3D. DRA:false de propósito — o mapa 2D usa DRA:true pra
-// ficar bonito em qualquer recorte de tela, mas isso normaliza pela área
-// visível (a mesma altura real mudaria de valor conforme o enquadramento).
-// Aqui a conversão usa as estatísticas globais do próprio serviço (min/max
-// documentados), então o mesmo ponto sempre reconstrói pro mesmo cm real.
-const MANGROVE_URL =
-  "https://gis.earthdata.nasa.gov/image/rest/services/C2389107206-ORNL_CLOUD/CMS_Global_Map_Mangrove_Canopy_1665/ImageServer/exportImage";
-const MANGROVE_MIN_CM = 0.2844882905483246;
-const MANGROVE_MAX_CM = 910.4758911132812;
-const MANGROVE_RENDERING_RULE = encodeURIComponent(
-  JSON.stringify({
-    rasterFunction: "Stretch",
-    rasterFunctionArguments: { StretchType: 6, DRA: false, UseGamma: false },
-  }),
-);
 const MANGROVE_GRID_MAX = 256;
 const heightmapCache = new Map();
 const HEIGHTMAP_TTL_MS = 6 * 60 * 60 * 1000;
+
+// Enumera os quadrados inteiros de 1°×1° que cobrem um bbox — usado tanto
+// pela altura (TanDEM-X) quanto pela extensão (GMW mais abaixo). IMPORTANTE,
+// descoberto testando contra os arquivos reais: os dois datasets cobrem a
+// MESMA área mas nomeiam a tile de jeitos DIFERENTES — GMW nomeia pelo canto
+// NOROESTE (ex. GMW_S26W049 cobre lat [-27,-26)), TanDEM-X nomeia pelo canto
+// SUDOESTE (ex. TDM1_..._S27W049_... cobre a MESMA área [-27,-26), mas com o
+// número 27, não 26 — existe até um S26W049 diferente no TanDEM-X, cobrindo
+// [-26,-25)). Por isso só a enumeração do quadrado (SW) é compartilhada; cada
+// dataset tem sua própria função de nome a partir do mesmo {south, west}.
+function integerTilesForBbox(west, south, east, north) {
+  const tiles = [];
+  for (let tileSouth = Math.floor(south); tileSouth < Math.ceil(north); tileSouth++) {
+    const tileNorth = tileSouth + 1;
+    if (tileSouth >= north || tileNorth <= south) continue;
+    for (let tileWest = Math.floor(west); tileWest < Math.ceil(east); tileWest++) {
+      const tileEast = tileWest + 1;
+      if (tileWest >= east || tileEast <= west) continue;
+      tiles.push({ south: tileSouth, west: tileWest });
+    }
+  }
+  return tiles;
+}
+
+function formatTileCore({ south, west }, { northBased }) {
+  const latValue = northBased ? south + 1 : south;
+  const latLetter = latValue <= 0 ? "S" : "N";
+  const lonLetter = west < 0 ? "W" : "E";
+  const latNum = String(Math.abs(latValue)).padStart(2, "0");
+  const lonNum = String(Math.abs(west)).padStart(3, "0");
+  return `${latLetter}${latNum}${lonLetter}${lonNum}`;
+}
+
+// ── Altura de dossel do manguezal (TanDEM-X 2015, Simard et al. 2024) ─────
+// Substitui o dataset anterior (Simard et al. 2019, ImageServer público): 12m
+// de resolução (vs ~31m), calibrado/validado com GEDI, RMSE 2,4m. DOI
+// 10.3334/ORNLDAAC/2251. Diferente de tudo mais que integramos: os arquivos
+// ficam atrás de autenticação NASA Earthdata Login — precisa de um token
+// pessoal (urs.earthdata.nasa.gov → Profile → Generate Token) na env
+// NASA_EARTHDATA_TOKEN. Cada tile já vem em METROS reais (float32) direto do
+// GeoTIFF — sem faixa global pra reconstruir feito o dataset antigo (que
+// vinha em PNG de 8 bits e precisava de min/max documentados pra converter
+// de volta pra cm).
+const TANDEMX_YEAR = 2015;
+// Cache em memória por tile igual ao GMW abaixo: decodifica 1x (~poucos
+// segundos, arquivo de ~3-4MB) e guarda o array bruto — requests seguintes só
+// amostram esse array. resampleMethod bilinear (não nearest) porque altura é
+// contínua, diferente da máscara binária do GMW.
+const TANDEMX_TILE_GRID = 2000;
+const TANDEMX_URL = (core) =>
+  `https://data.ornldaac.earthdata.nasa.gov/protected/cms/CMS_Global_Mangrove_Forest_Ht/data/TDM1_DEM__04_${core}_DEM_EGM08_GMW314_2015_WM_hcap_cal.tif`;
+
+const tandemxTileGridCache = new Map(); // tile core -> Promise<{ grid, bbox } | null>
+function getTandemxTileGrid(core) {
+  if (tandemxTileGridCache.has(core)) return tandemxTileGridCache.get(core);
+  const promise = (async () => {
+    if (!NASA_EARTHDATA_TOKEN) {
+      throw new Error(
+        "NASA_EARTHDATA_TOKEN não configurado no servidor (necessário pro dataset TanDEM-X)",
+      );
+    }
+    const upstream = await fetch(TANDEMX_URL(core), {
+      headers: { Authorization: `Bearer ${NASA_EARTHDATA_TOKEN}` },
+    });
+    if (upstream.status === 404 || upstream.status === 403) return null; // tile sem manguezal nessa região
+    if (!upstream.ok) {
+      throw new Error(`NASA Earthdata respondeu ${upstream.status} (token expirado ou inválido?)`);
+    }
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    const tiff = await geotiffFromArrayBuffer(
+      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    );
+    const image = await tiff.getImage();
+    const [grid] = await image.readRasters({
+      width: TANDEMX_TILE_GRID,
+      height: TANDEMX_TILE_GRID,
+      resampleMethod: "bilinear",
+    });
+    return { grid, bbox: image.getBoundingBox() };
+  })();
+  tandemxTileGridCache.set(core, promise);
+  promise.catch(() => tandemxTileGridCache.delete(core));
+  return promise;
+}
 
 app.get("/mangrove-heightmap", async (req, res) => {
   const west = Number(req.query.west);
@@ -272,42 +340,52 @@ app.get("/mangrove-heightmap", async (req, res) => {
   }
 
   try {
-    const url =
-      `${MANGROVE_URL}?bbox=${west},${south},${east},${north}` +
-      `&bboxSR=4326&imageSR=4326&size=${cols},${rows}&format=png32&f=image` +
-      `&renderingRule=${MANGROVE_RENDERING_RULE}`;
-    const upstream = await fetch(url);
-    if (!upstream.ok) {
-      return res.status(502).json({ error: `NASA ImageServer respondeu ${upstream.status}` });
-    }
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    const { data: pixels, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
-
-    if (info.width !== cols || info.height !== rows || info.channels < 4) {
-      return res.status(502).json({
-        error: `Resposta inesperada da NASA (${info.width}x${info.height}, ${info.channels} canais)`,
-      });
-    }
+    const tileCores = integerTilesForBbox(west, south, east, north).map((t) =>
+      formatTileCore(t, { northBased: false }),
+    );
+    const tiles = (await Promise.all(tileCores.map(getTandemxTileGrid))).filter(Boolean);
 
     const total = cols * rows;
-    const heightCm = new Array(total);
+    const heightCm = new Array(total).fill(0);
     let minCm = Infinity;
     let maxCm = 0;
-    for (let i = 0; i < total; i++) {
-      const o = i * info.channels;
-      const alpha = pixels[o + 3];
-      let cm = 0;
-      if (alpha > 0) {
-        const gray = pixels[o]; // R=G=B nessa renderização (escala de cinza)
-        cm = Math.round(MANGROVE_MIN_CM + (gray / 255) * (MANGROVE_MAX_CM - MANGROVE_MIN_CM));
-        if (cm < minCm) minCm = cm;
-        if (cm > maxCm) maxCm = cm;
+    for (let row = 0; row < rows; row++) {
+      const lat = north - (row / (rows - 1)) * (north - south);
+      for (let col = 0; col < cols; col++) {
+        const lon = west + (col / (cols - 1)) * (east - west);
+        for (const t of tiles) {
+          const [tw, ts, te, tn] = t.bbox;
+          if (lon < tw || lon > te || lat < ts || lat > tn) continue;
+          const srcRow = Math.min(
+            TANDEMX_TILE_GRID - 1,
+            Math.max(0, Math.round(((tn - lat) / (tn - ts)) * (TANDEMX_TILE_GRID - 1))),
+          );
+          const srcCol = Math.min(
+            TANDEMX_TILE_GRID - 1,
+            Math.max(0, Math.round(((lon - tw) / (te - tw)) * (TANDEMX_TILE_GRID - 1))),
+          );
+          const meters = t.grid[srcRow * TANDEMX_TILE_GRID + srcCol];
+          const cm = Number.isFinite(meters) && meters > 0 ? Math.round(meters * 100) : 0;
+          heightCm[row * cols + col] = cm;
+          if (cm > 0) {
+            if (cm < minCm) minCm = cm;
+            if (cm > maxCm) maxCm = cm;
+          }
+          break;
+        }
       }
-      heightCm[i] = cm;
     }
     if (!Number.isFinite(minCm)) minCm = 0;
 
-    const data = { bbox: [west, south, east, north], cols, rows, heightCm, minCm, maxCm };
+    const data = {
+      bbox: [west, south, east, north],
+      cols,
+      rows,
+      heightCm,
+      minCm,
+      maxCm,
+      year: TANDEMX_YEAR,
+    };
     heightmapCache.set(key, { at: Date.now(), data });
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
@@ -471,32 +549,11 @@ function getGmwDirectory() {
   return gmwDirectoryPromise;
 }
 
-// Convenção do nome da tile (confirmada testando contra o arquivo real): o
-// número após S é o extremo NORTE do quadrado 1°×1° (ele se estende 1° pra
-// SUL a partir dali); o número após W é o extremo OESTE (se estende 1° pro
-// LESTE). Ex.: S26W049 cobre exatamente lat [-27,-26) × lon [-49,-48).
-function gmwTileName(lat, lon) {
-  const tileNorth = Math.ceil(lat);
-  const tileWest = Math.floor(lon);
-  const latLetter = tileNorth <= 0 ? "S" : "N";
-  const lonLetter = tileWest < 0 ? "W" : "E";
-  const latNum = String(Math.abs(tileNorth)).padStart(2, "0");
-  const lonNum = String(Math.abs(tileWest)).padStart(3, "0");
-  return `GMW_${latLetter}${latNum}${lonLetter}${lonNum}_v4019_mng.tif`;
-}
-
-function gmwTilesForBbox(west, south, east, north) {
-  const names = [];
-  for (let tileNorth = Math.floor(south) + 1; tileNorth <= Math.ceil(north); tileNorth++) {
-    const tileSouth = tileNorth - 1;
-    if (tileSouth >= north || tileNorth <= south) continue;
-    for (let tileWest = Math.floor(west); tileWest < Math.ceil(east); tileWest++) {
-      const tileEast = tileWest + 1;
-      if (tileWest >= east || tileEast <= west) continue;
-      names.push(gmwTileName(tileNorth - 0.5, tileWest + 0.5)); // ponto central evita ambiguidade de borda
-    }
-  }
-  return names;
+// GMW nomeia pelo canto NOROESTE (northBased: true) — diferente do TanDEM-X
+// acima, que nomeia pelo canto SUDOESTE. Ver o comentário de
+// integerTilesForBbox pra o porquê dessa diferença entre os dois datasets.
+function gmwTileName(tile) {
+  return `GMW_${formatTileCore(tile, { northBased: true })}_v4019_mng.tif`;
 }
 
 const gmwTileGridCache = new Map(); // nome da tile -> Promise<{ grid, bbox } | null>
@@ -535,7 +592,7 @@ app.get("/mangrove-extent-gmw", async (req, res) => {
   const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
 
   try {
-    const tileNames = gmwTilesForBbox(west, south, east, north);
+    const tileNames = integerTilesForBbox(west, south, east, north).map(gmwTileName);
     const tiles = (await Promise.all(tileNames.map(getGmwTileGrid))).filter(Boolean);
 
     const mangrove = new Array(cols * rows).fill(0);

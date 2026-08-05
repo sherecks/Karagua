@@ -106,11 +106,12 @@ export type MangroveHeightmap = {
   heightCm: number[];
   minCm: number;
   maxCm: number;
+  year: number;
 };
 
 /** Grade real de altura de dossel (cm) para o terreno 3D — decodificada no
- *  servidor a partir do raster da NASA (o browser não teria como ler os
- *  pixels, o ImageServer não manda CORS). Ver api/index.js:/mangrove-heightmap. */
+ *  servidor a partir do GeoTIFF do TanDEM-X (dataset protegido, exige token
+ *  do NASA Earthdata Login). Ver api/index.js:/mangrove-heightmap. */
 export function fetchMangroveHeightmap(bbox: {
   west: number;
   south: number;

@@ -76,7 +76,7 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
           <span className="text-k-bright">
             Altura do dossel: {status.data.minCm}–{status.data.maxCm} cm
           </span>
-          <span>Simard et al. 2019 · NASA/ORNL DAAC · ~31 m/pixel</span>
+          <span>Simard et al. 2024 · TanDEM-X ({status.data.year}) · ORNL DAAC · ~12 m/pixel</span>
           {status.biomass && (
             <>
               <span className="text-k-bright">
