@@ -39,6 +39,26 @@ function totalCo2eTonnes(biomass: MangroveBiomass): number {
   return totalAgbTonnes * CARBON_FRACTION * CO2_PER_CARBON;
 }
 
+// Mini mapa de orientação (canto do HUD, não mais o "chão" da cena 3D — a
+// foto por baixo dos pontos ficava pesada e concorria com o dado real).
+// Mesmo servidor Esri já usado no mapa 2D, sem chave. Pede proporcional ao
+// bbox (evita esticar a imagem) e a exibição corta em quadrado via CSS
+// (object-fit: cover), sem distorcer.
+const ORIENTATION_MAP_SIZE = 300;
+function orientationMapUrl(bbox: Bbox): string {
+  const { west, south, east, north } = bbox;
+  const centerLat = (south + north) / 2;
+  const widthDeg = east - west;
+  const heightDeg = (north - south) / Math.cos((centerLat * Math.PI) / 180); // aproxima proporção real
+  const aspect = widthDeg / heightDeg;
+  const w = aspect >= 1 ? ORIENTATION_MAP_SIZE : Math.round(ORIENTATION_MAP_SIZE * aspect);
+  const h = aspect >= 1 ? Math.round(ORIENTATION_MAP_SIZE / aspect) : ORIENTATION_MAP_SIZE;
+  return (
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export" +
+    `?bbox=${west},${south},${east},${north}&bboxSR=4326&imageSR=4326&size=${w},${h}&format=jpg&f=image`
+  );
+}
+
 export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -86,6 +106,17 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
+      <div className="pointer-events-none absolute top-20 right-4 h-28 w-28 overflow-hidden rounded-full border-2 border-white/20 shadow-lg md:top-24 md:right-6 md:h-36 md:w-36">
+        <img
+          src={orientationMapUrl(bbox)}
+          alt="Mini mapa de localização da área recortada"
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+        <span className="absolute top-1 left-1/2 -translate-x-1/2 font-mono text-[10px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+          N
+        </span>
+      </div>
       {status.kind === "loading" && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#1a2332] text-body text-white/70">
           Carregando altura e biomassa reais do manguezal…
