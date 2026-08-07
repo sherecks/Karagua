@@ -14,6 +14,31 @@ type Status =
   | { kind: "error"; message: string }
   | { kind: "ready"; data: MangroveHeightmap; biomass: MangroveBiomass | null };
 
+// Fatores padrão do IPCC (2006 Guidelines for AFOLU) — os mesmos usados por
+// qualquer projeto de carbono florestal, incluindo os de manguezal (VM0033):
+// fração de carbono na biomassa seca (~0,47) e razão molecular CO2/C (44/12).
+const CARBON_FRACTION = 0.47;
+const CO2_PER_CARBON = 44 / 12;
+const METERS_PER_DEGREE_LAT = 111_320;
+
+/** Soma a biomassa real célula a célula (não a média × área — a densidade
+ *  varia muito ponto a ponto) e converte pra CO2 equivalente com os fatores
+ *  padrão do IPCC. É uma estimativa simplificada: a biomassa vem de um
+ *  produto florestal geral (ESA CCI), não específico de manguezal, e o
+ *  cálculo oficial de um projeto VM0033 tem etapas adicionais (incerteza,
+ *  buffer de risco, outros reservatórios de carbono) que este número não
+ *  cobre — serve pra dar ordem de grandeza, não pra emitir crédito. */
+function totalCo2eTonnes(biomass: MangroveBiomass): number {
+  const [west, south, east, north] = biomass.bbox;
+  const centerLat = (south + north) / 2;
+  const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
+  const cellWidthM = ((east - west) / biomass.cols) * metersPerDegreeLng;
+  const cellHeightM = ((north - south) / biomass.rows) * METERS_PER_DEGREE_LAT;
+  const cellAreaHa = (cellWidthM * cellHeightM) / 10_000;
+  const totalAgbTonnes = biomass.agbMgHa.reduce((sum, v) => sum + v * cellAreaHa, 0);
+  return totalAgbTonnes * CARBON_FRACTION * CO2_PER_CARBON;
+}
+
 export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -85,6 +110,14 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
               <span>
                 ESA CCI Biomass {status.biomass.year} · floresta em geral, não específico de
                 manguezal · ~100 m/pixel
+              </span>
+              <span className="text-k-bright">
+                ≈ {Math.round(totalCo2eTonnes(status.biomass)).toLocaleString("pt-BR")} t CO2e
+                estocadas nessa área
+              </span>
+              <span>
+                Fator de carbono IPCC (0,47) · CO2/C = 44/12 — estimativa, não substitui o cálculo
+                oficial de crédito
               </span>
             </>
           )}
