@@ -41,6 +41,35 @@ const TARGET_HEIGHT_FRACTION_OF_EXTENT = 0.16;
 /** Cor de fundo escura da marca (k-color-surface-carbon), não preto puro. */
 const BACKGROUND_COLOR = 0x1a2332;
 
+// Amostra a altura numa posição FRACIONÁRIA da grade (não só nos índices
+// inteiros de célula) por interpolação bilinear dos 4 vizinhos mais
+// próximos. É o que resolve o efeito de "platô quadrado": sem isso, todo
+// ponto de uma célula usava a MESMA altura (a da célula inteira), então
+// células vizinhas com alturas parecidas formavam degraus retos entre si —
+// com a amostragem contínua, a altura muda suavemente conforme a posição
+// real do ponto (mesmo dentro da "mesma" célula), como um relevo de verdade.
+function bilinearHeightCm(
+  heightCm: number[],
+  cols: number,
+  rows: number,
+  colF: number,
+  rowF: number,
+) {
+  const c0 = Math.min(cols - 1, Math.max(0, Math.floor(colF)));
+  const c1 = Math.min(cols - 1, c0 + 1);
+  const r0 = Math.min(rows - 1, Math.max(0, Math.floor(rowF)));
+  const r1 = Math.min(rows - 1, r0 + 1);
+  const tc = Math.min(1, Math.max(0, colF - c0));
+  const tr = Math.min(1, Math.max(0, rowF - r0));
+  const h00 = heightCm[r0 * cols + c0];
+  const h10 = heightCm[r0 * cols + c1];
+  const h01 = heightCm[r1 * cols + c0];
+  const h11 = heightCm[r1 * cols + c1];
+  const top = h00 + (h10 - h00) * tc;
+  const bottom = h01 + (h11 - h01) * tc;
+  return top + (bottom - top) * tr;
+}
+
 export type PointCloudSceneHandle = {
   resize(): void;
   dispose(): void;
@@ -91,7 +120,6 @@ export function createPointCloudScene(
       const cellIndex = row * cols + col;
       const cm = heightCm[cellIndex];
       if (cm <= 0) continue;
-      const heightSceneM = (cm / 100) * verticalScale;
       const pointCount = Math.min(
         MAX_POINTS_PER_COLUMN,
         Math.max(MIN_POINTS_PER_COLUMN, Math.round(4 + (cm / Math.max(maxCm, 1)) * 16)),
@@ -105,19 +133,24 @@ export function createPointCloudScene(
         ? biomassAligned.agbMgHa[cellIndex] / Math.max(biomassAligned.maxMgHa, 1)
         : null;
 
-      // Raio do espalhamento em círculo (não quadrado): copa de manguezal de
-      // verdade é redonda/irregular, não um bloco — jitter em X/Z
-      // independentes desenhava exatamente um quadrado (os 4 cantos da
-      // célula ficavam preenchidos igual ao centro). Sorteio em coordenada
-      // polar com raio em sqrt(aleatório) mantém a distribuição uniforme por
-      // ÁREA dentro do círculo (sem isso os pontos se acumulam no centro).
-      const jitterRadius = Math.min(cellWidthM, cellDepthM) * 0.45;
+      // Raio do espalhamento em CÍRCULO (não quadrado) e em unidade de
+      // célula (não metros) — assim dá pra reamostrar a altura na posição
+      // exata de cada ponto via bilinearHeightCm, deixando passar um pouco
+      // pra célula vizinha de propósito: é isso que costura a transição
+      // entre células (sem isso, cada célula era um "degau" reto plano).
+      const jitterRadiusCells = 0.5;
 
       for (let p = 0; p < pointCount; p++) {
-        const y = (p / (pointCount - 1)) * heightSceneM;
         const angle = Math.random() * Math.PI * 2;
-        const radius = Math.sqrt(Math.random()) * jitterRadius;
-        positions.push(x + Math.cos(angle) * radius, y, z + Math.sin(angle) * radius);
+        const radiusCells = Math.sqrt(Math.random()) * jitterRadiusCells;
+        const jitterCol = Math.cos(angle) * radiusCells;
+        const jitterRow = Math.sin(angle) * radiusCells;
+
+        const sampledCm = bilinearHeightCm(heightCm, cols, rows, col + jitterCol, row + jitterRow);
+        const sampledHeightSceneM = (Math.max(sampledCm, 0) / 100) * verticalScale;
+        const y = (p / (pointCount - 1)) * sampledHeightSceneM;
+        positions.push(x + jitterCol * cellWidthM, y, z + jitterRow * cellDepthM);
+
         const t = cellBiomassT ?? (maxHeightM > 0 ? y / (maxHeightM * verticalScale) : 0);
         const color = heatColor(t);
         colors.push(color.r, color.g, color.b);

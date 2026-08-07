@@ -41,22 +41,23 @@ function totalCo2eTonnes(biomass: MangroveBiomass): number {
 
 // Mini mapa de orientação (canto do HUD, não mais o "chão" da cena 3D — a
 // foto por baixo dos pontos ficava pesada e concorria com o dado real).
-// Mesmo servidor Esri já usado no mapa 2D, sem chave. Pede proporcional ao
-// bbox (evita esticar a imagem) e a exibição corta em quadrado via CSS
-// (object-fit: cover), sem distorcer.
+// Mesmo servidor Esri já usado no mapa 2D, sem chave. Devolve também a
+// proporção real do bbox (não força quadrado/círculo) — a moldura no HUD usa
+// esse aspect-ratio, então a miniatura mostra o formato exato do recorte,
+// não um recorte arbitrário dele.
 const ORIENTATION_MAP_SIZE = 300;
-function orientationMapUrl(bbox: Bbox): string {
+function orientationMap(bbox: Bbox): { url: string; width: number; height: number } {
   const { west, south, east, north } = bbox;
   const centerLat = (south + north) / 2;
   const widthDeg = east - west;
   const heightDeg = (north - south) / Math.cos((centerLat * Math.PI) / 180); // aproxima proporção real
   const aspect = widthDeg / heightDeg;
-  const w = aspect >= 1 ? ORIENTATION_MAP_SIZE : Math.round(ORIENTATION_MAP_SIZE * aspect);
-  const h = aspect >= 1 ? Math.round(ORIENTATION_MAP_SIZE / aspect) : ORIENTATION_MAP_SIZE;
-  return (
+  const width = aspect >= 1 ? ORIENTATION_MAP_SIZE : Math.round(ORIENTATION_MAP_SIZE * aspect);
+  const height = aspect >= 1 ? Math.round(ORIENTATION_MAP_SIZE / aspect) : ORIENTATION_MAP_SIZE;
+  const url =
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export" +
-    `?bbox=${west},${south},${east},${north}&bboxSR=4326&imageSR=4326&size=${w},${h}&format=jpg&f=image`
-  );
+    `?bbox=${west},${south},${east},${north}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=jpg&f=image`;
+  return { url, width, height };
 }
 
 export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
@@ -104,12 +105,17 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
     };
   }, [status]);
 
+  const map = orientationMap(bbox);
+
   return (
     <div ref={containerRef} className="relative h-full w-full">
-      <div className="pointer-events-none absolute top-20 right-4 h-28 w-28 overflow-hidden rounded-full border-2 border-white/20 shadow-lg md:top-24 md:right-6 md:h-36 md:w-36">
+      <div
+        className="pointer-events-none absolute top-20 right-4 w-28 overflow-hidden rounded border-2 border-white/20 shadow-lg md:top-24 md:right-6 md:w-40"
+        style={{ aspectRatio: `${map.width} / ${map.height}` }}
+      >
         <img
-          src={orientationMapUrl(bbox)}
-          alt="Mini mapa de localização da área recortada"
+          src={map.url}
+          alt="Mini mapa com o formato exato da área recortada"
           className="h-full w-full object-cover"
           loading="lazy"
         />
