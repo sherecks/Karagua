@@ -103,10 +103,10 @@ export function createPointCloudScene(
   const cellDepthM = depthM / Math.max(rows - 1, 1);
 
   // ── Geometria: uma coluna de pontos empilhados por célula da grade ────────
-  // Célula sem canopy real (cm<=0) não gera ponto nenhum — um ponto raso ali
-  // só formava uma grade de fundo sem informação (é sempre 0), poluindo a
-  // cena; a orientação (onde essa área fica) já é resolvida pelo mini mapa
-  // no HUD (point-cloud-scene-view.tsx), não precisa de nada no chão da cena.
+  // Célula sem canopy real (cm<=0) ganha 1 ponto raso no nível do solo — é o
+  // "chão" da cena, mas continua sendo nuvem de pontos (não imagem, não
+  // malha): mesmo princípio de antes, só desenhado com o mesmo material dos
+  // pontos de altura.
   const positions: number[] = [];
   const colors: number[] = [];
   for (let row = 0; row < rows; row++) {
@@ -119,19 +119,21 @@ export function createPointCloudScene(
 
       const cellIndex = row * cols + col;
       const cm = heightCm[cellIndex];
-      if (cm <= 0) continue;
+      const cellBiomassT = biomassAligned
+        ? biomassAligned.agbMgHa[cellIndex] / Math.max(biomassAligned.maxMgHa, 1)
+        : null;
+
+      if (cm <= 0) {
+        positions.push(x, 0, z);
+        const color = heatColor(cellBiomassT ?? 0);
+        colors.push(color.r, color.g, color.b);
+        continue;
+      }
+
       const pointCount = Math.min(
         MAX_POINTS_PER_COLUMN,
         Math.max(MIN_POINTS_PER_COLUMN, Math.round(4 + (cm / Math.max(maxCm, 1)) * 16)),
       );
-
-      // Com biomassa alinhada: altura = posição vertical (NASA), cor =
-      // concentração de carbono (ESA) — mesma cor pra coluna inteira, já que
-      // biomassa é um valor por célula, não por ponto. Sem biomassa: mantém o
-      // gradiente por altura de antes (fallback, um só dado disponível).
-      const cellBiomassT = biomassAligned
-        ? biomassAligned.agbMgHa[cellIndex] / Math.max(biomassAligned.maxMgHa, 1)
-        : null;
 
       // Raio do espalhamento em CÍRCULO (não quadrado) e em unidade de
       // célula (não metros) — assim dá pra reamostrar a altura na posição

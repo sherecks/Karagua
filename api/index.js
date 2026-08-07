@@ -234,7 +234,11 @@ app.get("/tide-extremes", async (req, res) => {
   }
 });
 
-const MANGROVE_GRID_MAX = 256;
+// Teto de resolução da grade pedida por qualquer endpoint de manguezal
+// (altura, biomassa, extensão GMW). Compartilhado entre os três — o front
+// pede até esse valor quando quer mais detalhe (célula menor = mais
+// variação no terreno 3D).
+const MANGROVE_GRID_MAX = 320;
 const heightmapCache = new Map();
 const HEIGHTMAP_TTL_MS = 6 * 60 * 60 * 1000;
 

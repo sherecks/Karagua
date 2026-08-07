@@ -39,27 +39,6 @@ function totalCo2eTonnes(biomass: MangroveBiomass): number {
   return totalAgbTonnes * CARBON_FRACTION * CO2_PER_CARBON;
 }
 
-// Mini mapa de orientação (canto do HUD, não mais o "chão" da cena 3D — a
-// foto por baixo dos pontos ficava pesada e concorria com o dado real).
-// Mesmo servidor Esri já usado no mapa 2D, sem chave. Devolve também a
-// proporção real do bbox (não força quadrado/círculo) — a moldura no HUD usa
-// esse aspect-ratio, então a miniatura mostra o formato exato do recorte,
-// não um recorte arbitrário dele.
-const ORIENTATION_MAP_SIZE = 300;
-function orientationMap(bbox: Bbox): { url: string; width: number; height: number } {
-  const { west, south, east, north } = bbox;
-  const centerLat = (south + north) / 2;
-  const widthDeg = east - west;
-  const heightDeg = (north - south) / Math.cos((centerLat * Math.PI) / 180); // aproxima proporção real
-  const aspect = widthDeg / heightDeg;
-  const width = aspect >= 1 ? ORIENTATION_MAP_SIZE : Math.round(ORIENTATION_MAP_SIZE * aspect);
-  const height = aspect >= 1 ? Math.round(ORIENTATION_MAP_SIZE / aspect) : ORIENTATION_MAP_SIZE;
-  const url =
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export" +
-    `?bbox=${west},${south},${east},${north}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=jpg&f=image`;
-  return { url, width, height };
-}
-
 export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -67,7 +46,10 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
   useEffect(() => {
     let cancelled = false;
     setStatus({ kind: "loading" });
-    const cols = window.matchMedia("(min-width: 1024px)").matches ? 192 : 96;
+    // Grade mais fina = células menores = mais variação na altura entre
+    // pontos vizinhos (menos "quadrado", mais relevo). 320 já é o teto que o
+    // back-end aceita (MANGROVE_GRID_MAX).
+    const cols = window.matchMedia("(min-width: 1024px)").matches ? 320 : 160;
     // Biomassa (ESA) é opcional: se falhar, a nuvem de pontos ainda funciona
     // com altura real (NASA) sozinha — nunca bloqueia a visualização.
     void Promise.all([
@@ -105,24 +87,8 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
     };
   }, [status]);
 
-  const map = orientationMap(bbox);
-
   return (
     <div ref={containerRef} className="relative h-full w-full">
-      <div
-        className="pointer-events-none absolute top-20 right-4 w-28 overflow-hidden rounded border-2 border-white/20 shadow-lg md:top-24 md:right-6 md:w-40"
-        style={{ aspectRatio: `${map.width} / ${map.height}` }}
-      >
-        <img
-          src={map.url}
-          alt="Mini mapa com o formato exato da área recortada"
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-        <span className="absolute top-1 left-1/2 -translate-x-1/2 font-mono text-[10px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
-          N
-        </span>
-      </div>
       {status.kind === "loading" && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#1a2332] text-body text-white/70">
           Carregando altura e biomassa reais do manguezal…
