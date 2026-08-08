@@ -30,8 +30,11 @@ export type MangroveBiomass = {
 };
 
 const METERS_PER_DEGREE_LAT = 111_320;
-const MIN_POINTS_PER_COLUMN = 4;
-const MAX_POINTS_PER_COLUMN = 20;
+// Mais pontos que antes: o raio de espalhamento (jitterRadiusCells, abaixo)
+// aumentou bastante pra dissolver o alinhamento em grade, então precisa de
+// mais pontos por célula pra preencher essa área maior sem ficar ralo.
+const MIN_POINTS_PER_COLUMN = 6;
+const MAX_POINTS_PER_COLUMN = 28;
 // Altura real (poucos metros) é minúscula perto da extensão horizontal (dezenas
 // a milhares de metros); sem exagero vertical o relevo não apareceria. Mesma
 // convenção de qualquer mapa de relevo — a fração-alvo abaixo é calibrada pra
@@ -132,15 +135,25 @@ export function createPointCloudScene(
 
       const pointCount = Math.min(
         MAX_POINTS_PER_COLUMN,
-        Math.max(MIN_POINTS_PER_COLUMN, Math.round(4 + (cm / Math.max(maxCm, 1)) * 16)),
+        Math.max(
+          MIN_POINTS_PER_COLUMN,
+          Math.round(
+            MIN_POINTS_PER_COLUMN +
+              (cm / Math.max(maxCm, 1)) * (MAX_POINTS_PER_COLUMN - MIN_POINTS_PER_COLUMN),
+          ),
+        ),
       );
 
       // Raio do espalhamento em CÍRCULO (não quadrado) e em unidade de
-      // célula (não metros) — assim dá pra reamostrar a altura na posição
-      // exata de cada ponto via bilinearHeightCm, deixando passar um pouco
-      // pra célula vizinha de propósito: é isso que costura a transição
-      // entre células (sem isso, cada célula era um "degau" reto plano).
-      const jitterRadiusCells = 0.5;
+      // célula (não metros). Precisa passar bem além da própria célula (>1,
+      // não só até a borda): com raio 0,5 o círculo de cada célula ficava
+      // inscrito exatamente nela, então célula vizinha nunca se misturava —
+      // o conjunto de "tufos" isolados, um por célula, alinhados na grade,
+      // é o que lia como quadriculado. Com raio maior os círculos de células
+      // vizinhas se sobrepõem bastante, dissolvendo o alinhamento em grade
+      // numa massa contínua e irregular (bilinearHeightCm garante que a
+      // altura amostrada longe da célula original ainda faça sentido).
+      const jitterRadiusCells = 1.4;
 
       for (let p = 0; p < pointCount; p++) {
         const angle = Math.random() * Math.PI * 2;
@@ -167,7 +180,7 @@ export function createPointCloudScene(
   // Sem iluminação: nuvem de pontos real não tem sombreamento, a cor já É a
   // altura. PointsMaterial simplesmente exibe as vertexColors calculadas acima.
   const material = new PointsMaterial({
-    size: Math.max(0.35, horizontalExtentM / Math.max(cols, rows) / 3),
+    size: Math.max(0.35, horizontalExtentM / Math.max(cols, rows) / 2),
     vertexColors: true,
     sizeAttenuation: true,
   });
