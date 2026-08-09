@@ -285,17 +285,23 @@ function formatTileCore({ south, west }, { northBased }) {
 // vinha em PNG de 8 bits e precisava de min/max documentados pra converter
 // de volta pra cm).
 const TANDEMX_YEAR = 2015;
-// Cache em memória por tile igual ao GMW abaixo: decodifica 1x (~poucos
-// segundos, arquivo de ~3-4MB) e guarda o array bruto — requests seguintes só
-// amostram esse array. resampleMethod bilinear (não nearest) porque altura é
-// contínua, diferente da máscara binária do GMW.
-const TANDEMX_TILE_GRID = 2000;
 const TANDEMX_URL = (core) =>
   `https://data.ornldaac.earthdata.nasa.gov/protected/cms/CMS_Global_Mangrove_Forest_Ht/data/TDM1_DEM__04_${core}_DEM_EGM08_GMW314_2015_WM_hcap_cal.tif`;
 
-const tandemxTileGridCache = new Map(); // tile core -> Promise<{ grid, bbox } | null>
-function getTandemxTileGrid(core) {
-  if (tandemxTileGridCache.has(core)) return tandemxTileGridCache.get(core);
+// Cache só do OBJETO GeoTIFF decodificado (metadados + índice de tiles
+// internos), não da grade de altura inteira: uma tile de 1°×1° a 12m nativo
+// tem ~9000×9000 pixels (~300MB em float32) — decodificar isso tudo de uma
+// vez pra depois amostrar por vizinho-mais-próximo foi o que causava o
+// artefato de "quadrados": um recorte pequeno pedindo 320 colunas cai bem
+// abaixo da resolução nativa, então virava amostragem grosseira demais
+// (achatada em blocos). Em vez disso, cada request faz sua própria leitura
+// EM JANELA (readRasters com `window`) só da porção da tile que cobre o
+// bbox pedido, já reamostrada por bilinear pro tamanho exato solicitado —
+// mais rápido (decodifica só os blocos internos necessários) e sem perder
+// resolução antes de reamostrar.
+const tandemxImageCache = new Map(); // tile core -> Promise<{ image, bbox, width, height } | null>
+function getTandemxImage(core) {
+  if (tandemxImageCache.has(core)) return tandemxImageCache.get(core);
   const promise = (async () => {
     if (!NASA_EARTHDATA_TOKEN) {
       throw new Error(
@@ -314,15 +320,15 @@ function getTandemxTileGrid(core) {
       buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
     );
     const image = await tiff.getImage();
-    const [grid] = await image.readRasters({
-      width: TANDEMX_TILE_GRID,
-      height: TANDEMX_TILE_GRID,
-      resampleMethod: "bilinear",
-    });
-    return { grid, bbox: image.getBoundingBox() };
+    return {
+      image,
+      bbox: image.getBoundingBox(),
+      width: image.getWidth(),
+      height: image.getHeight(),
+    };
   })();
-  tandemxTileGridCache.set(core, promise);
-  promise.catch(() => tandemxTileGridCache.delete(core));
+  tandemxImageCache.set(core, promise);
+  promise.catch(() => tandemxImageCache.delete(core));
   return promise;
 }
 
@@ -347,35 +353,65 @@ app.get("/mangrove-heightmap", async (req, res) => {
     const tileCores = integerTilesForBbox(west, south, east, north).map((t) =>
       formatTileCore(t, { northBased: false }),
     );
-    const tiles = (await Promise.all(tileCores.map(getTandemxTileGrid))).filter(Boolean);
+    const tiles = (await Promise.all(tileCores.map(getTandemxImage))).filter(Boolean);
 
     const total = cols * rows;
     const heightCm = new Array(total).fill(0);
     let minCm = Infinity;
     let maxCm = 0;
-    for (let row = 0; row < rows; row++) {
-      const lat = north - (row / (rows - 1)) * (north - south);
-      for (let col = 0; col < cols; col++) {
-        const lon = west + (col / (cols - 1)) * (east - west);
-        for (const t of tiles) {
-          const [tw, ts, te, tn] = t.bbox;
-          if (lon < tw || lon > te || lat < ts || lat > tn) continue;
-          const srcRow = Math.min(
-            TANDEMX_TILE_GRID - 1,
-            Math.max(0, Math.round(((tn - lat) / (tn - ts)) * (TANDEMX_TILE_GRID - 1))),
-          );
-          const srcCol = Math.min(
-            TANDEMX_TILE_GRID - 1,
-            Math.max(0, Math.round(((lon - tw) / (te - tw)) * (TANDEMX_TILE_GRID - 1))),
-          );
-          const meters = t.grid[srcRow * TANDEMX_TILE_GRID + srcCol];
+
+    // Por tile: recorta só a sub-região da grade de SAÍDA (cols×rows) que
+    // cai dentro do bbox da tile, e pede pro geotiff.js ler exatamente essa
+    // janela nativa já reamostrada (bilinear) pro tamanho dessa sub-região —
+    // sem passar por uma grade intermediária de resolução fixa.
+    for (const tile of tiles) {
+      const [tw, ts, te, tn] = tile.bbox;
+      const clipWest = Math.max(west, tw);
+      const clipEast = Math.min(east, te);
+      const clipSouth = Math.max(south, ts);
+      const clipNorth = Math.min(north, tn);
+      if (clipWest >= clipEast || clipSouth >= clipNorth) continue;
+
+      const colStart = Math.max(0, Math.ceil(((clipWest - west) / (east - west)) * (cols - 1)));
+      const colEnd = Math.min(
+        cols - 1,
+        Math.floor(((clipEast - west) / (east - west)) * (cols - 1)),
+      );
+      const rowStart = Math.max(0, Math.ceil(((north - clipNorth) / (north - south)) * (rows - 1)));
+      const rowEnd = Math.min(
+        rows - 1,
+        Math.floor(((north - clipSouth) / (north - south)) * (rows - 1)),
+      );
+      if (colEnd < colStart || rowEnd < rowStart) continue;
+      const subCols = colEnd - colStart + 1;
+      const subRows = rowEnd - rowStart + 1;
+
+      const subWest = west + (colStart / (cols - 1)) * (east - west);
+      const subEast = west + (colEnd / (cols - 1)) * (east - west);
+      const subNorth = north - (rowStart / (rows - 1)) * (north - south);
+      const subSouth = north - (rowEnd / (rows - 1)) * (north - south);
+
+      const xMin = Math.max(0, Math.floor(((subWest - tw) / (te - tw)) * tile.width));
+      const xMax = Math.min(tile.width, Math.ceil(((subEast - tw) / (te - tw)) * tile.width));
+      const yMin = Math.max(0, Math.floor(((tn - subNorth) / (tn - ts)) * tile.height));
+      const yMax = Math.min(tile.height, Math.ceil(((tn - subSouth) / (tn - ts)) * tile.height));
+      if (xMax <= xMin || yMax <= yMin) continue;
+
+      const [grid] = await tile.image.readRasters({
+        window: [xMin, yMin, xMax, yMax],
+        width: subCols,
+        height: subRows,
+        resampleMethod: "bilinear",
+      });
+      for (let r = 0; r < subRows; r++) {
+        for (let c = 0; c < subCols; c++) {
+          const meters = grid[r * subCols + c];
           const cm = Number.isFinite(meters) && meters > 0 ? Math.round(meters * 100) : 0;
-          heightCm[row * cols + col] = cm;
+          heightCm[(rowStart + r) * cols + (colStart + c)] = cm;
           if (cm > 0) {
             if (cm < minCm) minCm = cm;
             if (cm > maxCm) maxCm = cm;
           }
-          break;
         }
       }
     }
