@@ -74,6 +74,22 @@ function bilinearHeightCm(
   return top + (bottom - top) * tr;
 }
 
+/**
+ * Valor no percentil `p` (0-1) de uma lista já ordenada crescente. Usado pra
+ * normalizar a COR pela altura sem deixar um pico isolado (árvore emergente
+ * de verdade, ou ruído do próprio dado de satélite) dominar a escala inteira
+ * — sem isso, um único pixel muito alto vira "o vermelho" e empurra todo o
+ * resto do dossel pro azul, mesmo que a maioria seja bem mais alta que o
+ * chão. É a mesma razão pela qual viewers de nuvem de pontos (CloudCompare
+ * etc.) normalmente mostram uma faixa "arrumada" na legenda de Coord. Z, não
+ * o mínimo/máximo bruto.
+ */
+function percentileSorted(sortedAsc: number[], p: number): number {
+  if (sortedAsc.length === 0) return 0;
+  const idx = Math.min(sortedAsc.length - 1, Math.floor(p * sortedAsc.length));
+  return sortedAsc[idx];
+}
+
 export type PointCloudSceneHandle = {
   resize(): void;
   dispose(): void;
@@ -82,16 +98,10 @@ export type PointCloudSceneHandle = {
 export function createPointCloudScene(
   container: HTMLElement,
   data: MangroveHeightmap,
-  options: { reduceMotion: boolean; biomass?: MangroveBiomass | null },
+  options: { reduceMotion: boolean },
 ): PointCloudSceneHandle {
   const { cols, rows, heightCm, bbox, maxCm } = data;
   const [west, south, east, north] = bbox;
-  // Biomassa (ESA CCI) só colore por célula se vier na MESMA grade da altura
-  // (mesmo bbox, mesmo cols/rows pedidos ao back-end) — sem isso não dá pra
-  // combinar os dois datasets ponto a ponto.
-  const biomass = options.biomass;
-  const biomassAligned =
-    !!biomass && biomass.cols === cols && biomass.rows === rows ? biomass : null;
   const centerLat = (south + north) / 2;
   const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
 
@@ -100,6 +110,14 @@ export function createPointCloudScene(
   const horizontalExtentM = Math.max(widthM, depthM, 1);
   const maxHeightM = Math.max(maxCm / 100, 0.01);
   const verticalScale = (horizontalExtentM * TARGET_HEIGHT_FRACTION_OF_EXTENT) / maxHeightM;
+
+  // Máximo de COR (percentil 95 das alturas reais > 0), separado do máximo de
+  // ESCALA vertical acima (que continua usando o máximo bruto — a altura
+  // física do pico continua correta na cena, só a cor satura em vermelho a
+  // partir do p95 em vez de só no ponto mais alto de todos).
+  const sortedNonZeroCm = heightCm.filter((cm) => cm > 0).sort((a, b) => a - b);
+  const colorMaxCm = Math.max(percentileSorted(sortedNonZeroCm, 0.95), 1);
+  const colorMaxSceneM = (colorMaxCm / 100) * verticalScale;
 
   // Tamanho de célula em metros — usado só pro espalhamento horizontal
   // orgânico dos pontos (ver abaixo), não muda a projeção lat/lng → metros.
@@ -123,13 +141,12 @@ export function createPointCloudScene(
 
       const cellIndex = row * cols + col;
       const cm = heightCm[cellIndex];
-      const cellBiomassT = biomassAligned
-        ? biomassAligned.agbMgHa[cellIndex] / Math.max(biomassAligned.maxMgHa, 1)
-        : null;
 
       if (cm <= 0) {
+        // Chão (y=0) fica na cor mais baixa da rampa, igual a um viewer
+        // LiDAR real onde o "nível do mar" é sempre a base da escala de cor.
         positions.push(x, 0, z);
-        const color = heatColor(cellBiomassT ?? 0);
+        const color = heatColor(0);
         colors.push(color.r, color.g, color.b);
         continue;
       }
@@ -167,11 +184,12 @@ export function createPointCloudScene(
         const y = (p / (pointCount - 1)) * sampledHeightSceneM;
         positions.push(x + jitterCol * cellWidthM, y, z + jitterRow * cellDepthM);
 
-        // Cor pela biomassa real da célula (não pela altura do ponto): é o
-        // dado que mais importa pro projeto de carbono, então é ele que
-        // orienta a cor — altura entra só na geometria (quão alto o ponto
-        // fica), como antes.
-        const t = cellBiomassT ?? (maxHeightM > 0 ? y / (maxHeightM * verticalScale) : 0);
+        // Cor pela altura REAL do próprio ponto (Z), igual a um viewer LiDAR
+        // de verdade (legenda "Coord. Z"): gradiente azul→verde→amarelo→
+        // vermelho conforme a altura sobre o solo. Normalizado pelo
+        // percentil 95 (colorMaxSceneM), não pelo máximo bruto — ver
+        // comentário acima.
+        const t = colorMaxSceneM > 0 ? y / colorMaxSceneM : 0;
         const color = heatColor(t);
         colors.push(color.r, color.g, color.b);
       }

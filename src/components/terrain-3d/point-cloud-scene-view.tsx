@@ -79,7 +79,6 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let handle: PointCloudSceneHandle | null = createPointCloudScene(container, status.data, {
       reduceMotion,
-      biomass: status.biomass,
     });
     return () => {
       handle?.dispose();
