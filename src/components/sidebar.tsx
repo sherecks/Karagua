@@ -28,9 +28,12 @@ function itemVariants(enterDelay: number) {
 }
 
 // Links fixos, sempre visíveis independente da página (home ou não).
+// `external: true` abre em nova aba (rota fora do domínio, não faz sentido
+// navegar via react-router).
 const FIXED_LINKS = [
   { to: "/laboratorio-karagua-vivo", label: "Laboratório Karaguá" },
   { to: "/mapa", label: "Mapa do Projeto" },
+  { to: "https://rag-karagua.up.railway.app", label: "RAG Karaguá", external: true },
 ];
 
 export function Sidebar({ onClose }: SidebarProps) {
@@ -152,20 +155,39 @@ export function Sidebar({ onClose }: SidebarProps) {
               animate="visible"
               exit="exit"
             >
-              <Link
-                to={link.to}
-                onClick={onClose}
-                className="text-2xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
-              >
-                <motion.span
-                  className="inline-block origin-left"
-                  style={{ fontStyle: "normal" }}
-                  whileHover={{ scale: 1.02, fontStyle: "italic", x: 10 }}
-                  transition={{ type: "tween", duration: 0.6, ease: EASE_OUT_QUART }}
+              {link.external ? (
+                <a
+                  href={link.to}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onClose}
+                  className="text-2xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
                 >
-                  {link.label}
-                </motion.span>
-              </Link>
+                  <motion.span
+                    className="inline-block origin-left"
+                    style={{ fontStyle: "normal" }}
+                    whileHover={{ scale: 1.02, fontStyle: "italic", x: 10 }}
+                    transition={{ type: "tween", duration: 0.6, ease: EASE_OUT_QUART }}
+                  >
+                    {link.label}
+                  </motion.span>
+                </a>
+              ) : (
+                <Link
+                  to={link.to}
+                  onClick={onClose}
+                  className="text-2xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
+                >
+                  <motion.span
+                    className="inline-block origin-left"
+                    style={{ fontStyle: "normal" }}
+                    whileHover={{ scale: 1.02, fontStyle: "italic", x: 10 }}
+                    transition={{ type: "tween", duration: 0.6, ease: EASE_OUT_QUART }}
+                  >
+                    {link.label}
+                  </motion.span>
+                </Link>
+              )}
             </motion.div>
           </li>
         ))}
