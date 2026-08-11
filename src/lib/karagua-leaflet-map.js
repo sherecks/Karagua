@@ -412,8 +412,8 @@ class KaraguaLeafletMap extends HTMLElement {
       </button>
       <div id="side-panel">
         <div id="side-content">
-        <div class="side-section" id="cond-section" data-section="cond">
-          <button type="button" class="section-header" aria-expanded="true">
+        <div class="side-section collapsed" id="cond-section" data-section="cond">
+          <button type="button" class="section-header" aria-expanded="false">
             <span>Condições</span>
             <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
@@ -422,8 +422,8 @@ class KaraguaLeafletMap extends HTMLElement {
           </div>
         </div>
         <div class="panel-divider"></div>
-        <div class="side-section" id="legend-section" data-section="legend">
-          <button type="button" class="section-header" aria-expanded="true">
+        <div class="side-section collapsed" id="legend-section" data-section="legend">
+          <button type="button" class="section-header" aria-expanded="false">
             <span>Legenda</span>
             <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
@@ -453,8 +453,8 @@ class KaraguaLeafletMap extends HTMLElement {
           </div>
         </div>
         <div class="panel-divider"></div>
-        <div class="side-section" id="points-section" data-section="points">
-          <button type="button" class="section-header" aria-expanded="true">
+        <div class="side-section collapsed" id="points-section" data-section="points">
+          <button type="button" class="section-header" aria-expanded="false">
             <span>Pontos de interesse</span>
             <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
@@ -719,9 +719,10 @@ class KaraguaLeafletMap extends HTMLElement {
   }
 
   // Cada seção do painel (Condições, Legenda, Camadas, Pontos de interesse)
-  // abre/fecha independente — com tantas camadas o painel inteiro não cabia
-  // na tela; "Camadas" já entra fechada (é a maior e é opt-in, o usuário só
-  // abre quando quer ligar algo), as outras entram abertas.
+  // abre/fecha independente — todas entram FECHADAS: com todas abertas o
+  // painel passava do fim da tela (a lista de "Pontos de interesse" em
+  // particular pode ter dezenas de itens). O usuário abre só a seção que
+  // quer ver.
   _initSectionToggles() {
     this.shadowRoot.querySelectorAll(".side-section > .section-header").forEach((header) => {
       header.addEventListener("click", () => {
