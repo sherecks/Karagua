@@ -5,32 +5,37 @@ import { Section, SectionHeader } from "@/components/lp/section";
 const members = [
   {
     nome: "João Pedro",
-    papel: "Co-founder",
+    papel: "Co-fundador",
     credencial: "Líder de tecnologia, operações e estruturação.",
   },
   {
     nome: "Lucas Melo",
-    papel: "Co-founder",
-    credencial: "Liderança da visão e da estratégia institucional.",
+    papel: "Co-fundador",
+    credencial: "Liderança de visão e estratégia institucional.",
   },
   {
-    nome: "Gabriela",
-    papel: "Coordenadora Técnica",
+    nome: "Gabriela Patrício",
+    papel: "Coordenadora técnica",
     credencial: "Caracterização ambiental e supervisão do monitoramento georreferenciado.",
   },
   {
-    nome: "Carol",
+    nome: "Karol Dutra",
     papel: "Análises técnicas",
     credencial: "Análises técnicas que sustentam a certificação Verra.",
   },
   {
-    nome: "Sabrina",
+    nome: "Sabrina Ribeiro",
     papel: "Levantamentos de campo",
     credencial: "Levantamentos de campo e mapeamento de áreas prioritárias de restauração.",
   },
   {
+    nome: "Kaue Roeder",
+    papel: "Pedagogia escolar",
+    credencial: "Propostas educativas para a comunidade e público participante.",
+  },
+  {
     nome: "Daniela Póvoa",
-    papel: "Captadora de Recursos",
+    papel: "Captadora de recursos",
     credencial:
       "Estruturação de parcerias e mobilização de capital para lastrear os projetos em campo.",
   },
