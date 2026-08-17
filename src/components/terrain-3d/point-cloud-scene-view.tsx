@@ -99,7 +99,13 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
         </div>
       )}
       {status.kind === "ready" && (
-        <div className="pointer-events-none absolute bottom-4 left-4 flex flex-col gap-1 font-mono text-xs text-white/70 md:bottom-6 md:left-6">
+        // max-h + overflow-y-auto: em telas baixas o texto (com as citações
+        // de fonte) pode ficar mais alto que o espaço disponível — sem isso,
+        // a caixa (ancorada em bottom-4) cresce pra cima e as primeiras
+        // linhas somem por trás do topo da tela. pointer-events-auto só
+        // nessa caixa (o resto da cena continua com pointer-events-none)
+        // pra permitir rolar o texto sem travar o orbit do mapa 3D.
+        <div className="pointer-events-auto absolute bottom-4 left-4 right-4 max-h-[45vh] overflow-y-auto overscroll-contain flex flex-col gap-1 font-mono text-xs text-white/70 md:bottom-6 md:left-6 md:right-auto md:max-h-[60vh] md:max-w-md">
           <span className="text-k-bright">
             Altura do dossel: {status.data.minCm}–{status.data.maxCm} cm
           </span>

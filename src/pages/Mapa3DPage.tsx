@@ -23,12 +23,13 @@ function parseBbox(params: URLSearchParams) {
 // então a área bate exatamente com o relevo desenhado. Km² a partir de
 // 100 ha: abaixo disso hectare é mais legível, acima km² compara melhor.
 const METERS_PER_DEGREE_LAT = 111_320;
-function formatBboxArea(bbox: {
-  west: number;
-  south: number;
-  east: number;
-  north: number;
-}): string {
+// `compact` omite o "(X ha)" entre parênteses — usado no mobile, onde o
+// header não tem espaço pro rótulo completo junto com a logo e o link de
+// voltar (era o que quebrava o header em telas estreitas).
+function formatBboxArea(
+  bbox: { west: number; south: number; east: number; north: number },
+  compact = false,
+): string {
   const centerLat = (bbox.south + bbox.north) / 2;
   const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
   const widthM = (bbox.east - bbox.west) * metersPerDegreeLng;
@@ -36,7 +37,8 @@ function formatBboxArea(bbox: {
   const areaHa = (widthM * heightM) / 10_000;
   if (areaHa >= 100) {
     const km2 = areaHa / 100;
-    return `${km2.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km² (${Math.round(areaHa).toLocaleString("pt-BR")} ha)`;
+    const km2Label = `${km2.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km²`;
+    return compact ? km2Label : `${km2Label} (${Math.round(areaHa).toLocaleString("pt-BR")} ha)`;
   }
   return `${areaHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha`;
 }
@@ -45,6 +47,7 @@ export function Mapa3DPage() {
   const [searchParams] = useSearchParams();
   const bbox = parseBbox(searchParams);
   const areaLabel = formatBboxArea(bbox);
+  const areaLabelCompact = formatBboxArea(bbox, true);
 
   useEffect(() => {
     document.title = "Terreno 3D do manguezal · Karaguá";
@@ -55,22 +58,26 @@ export function Mapa3DPage() {
 
   return (
     <div className="relative h-screen overflow-hidden bg-[#1a2332]">
-      <header className="absolute top-0 inset-x-0 z-[1000] flex items-center justify-between px-4 py-3 md:px-10 md:py-4">
-        <Link to="/" style={{ viewTransitionName: "brand-mark" }}>
-          <img src="/logo-2.svg" alt="Karaguá" className="h-10 w-auto md:h-12" />
+      <header className="absolute top-0 inset-x-0 z-[1000] flex items-center justify-between gap-2 px-4 py-3 md:px-10 md:py-4">
+        <Link to="/" style={{ viewTransitionName: "brand-mark" }} className="shrink-0">
+          <img src="/logo-2.svg" alt="Karaguá" className="h-8 w-auto md:h-12" />
         </Link>
-        <div className="flex items-center gap-3 md:gap-6">
-          <span className="text-label font-semibold tracking-[0.12em] uppercase text-white">
+        <div className="flex items-center gap-2 min-w-0 md:gap-6">
+          <span className="text-label font-semibold tracking-[0.12em] uppercase text-white whitespace-nowrap md:hidden">
+            {areaLabelCompact}
+          </span>
+          <span className="hidden md:inline text-label font-semibold tracking-[0.12em] uppercase text-white whitespace-nowrap">
             Terreno 3D · {areaLabel}
           </span>
-          <span className="hidden md:inline text-label font-semibold tracking-[0.12em] uppercase text-white/50">
+          <span className="hidden md:inline text-label font-semibold tracking-[0.12em] uppercase text-white/50 whitespace-nowrap">
             Altura e biomassa
           </span>
           <Link
             to="/mapa"
-            className="text-sm text-white transition-colors hover:text-k-bright px-2 py-2 min-h-[44px] inline-flex items-center"
+            className="shrink-0 text-sm text-white transition-colors hover:text-k-bright px-2 py-2 min-h-[44px] inline-flex items-center whitespace-nowrap"
           >
-            ← Voltar ao mapa
+            <span className="md:hidden">← Voltar</span>
+            <span className="hidden md:inline">← Voltar ao mapa</span>
           </Link>
         </div>
       </header>
