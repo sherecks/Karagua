@@ -501,9 +501,9 @@ class KaraguaLeafletMap extends HTMLElement {
             <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="section-body" id="history-body">
-            <p class="history-hint">Área de manguezal (ha) na região visível do mapa, por ano.</p>
+            <p class="history-hint">Área de manguezal (ha) em todo o município de Balneário Barra do Sul, por ano.</p>
             <div id="history-chart-wrap"></div>
-            <button type="button" id="history-refresh-btn" class="layer-button">Calcular pra área atual</button>
+            <button type="button" id="history-refresh-btn" class="layer-button">Recalcular</button>
             <span class="layer-credit" id="history-credit"></span>
           </div>
         </div>
@@ -1291,17 +1291,17 @@ class KaraguaLeafletMap extends HTMLElement {
     this._historyLoaded = true;
     wrap.innerHTML = `<div class="history-loading">Calculando área por ano (1996-2020)...</div>`;
 
-    const b = this._map.getBounds();
+    // Sem bbox: o back-end sempre calcula pro município inteiro (limite
+    // oficial do IBGE), não pra área visível do mapa — ver o comentário de
+    // getMunicipioPolygon na API pra entender por quê.
     try {
-      const res = await fetch(
-        `${apiUrl.replace(/\/$/, "")}/mangrove-extent-history?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}`,
-      );
+      const res = await fetch(`${apiUrl.replace(/\/$/, "")}/mangrove-extent-history`);
       const body = await res.json();
       if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
       wrap.innerHTML = KaraguaLeafletMap._renderHistoryChart(body.data.years);
       if (credit) {
         credit.textContent =
-          "Global Mangrove Watch v3 (1996-2019, 25m) + v4 (2020, 10m) · área na região visível do mapa";
+          "Global Mangrove Watch v3 (1996-2019, 25m) + v4 (2020, 10m) · limite oficial do município (IBGE)";
       }
     } catch (e) {
       wrap.innerHTML = `<div class="history-error">Histórico indisponível: ${e.message}</div>`;

@@ -625,6 +625,67 @@ function gmwTileNameForYear(year, tile) {
   return `gmw_v3_${year}/GMW_${core}_${year}_v3.tif`;
 }
 
+// ── Limite oficial do município (IBGE Malhas API) ──────────────────────────
+// O histórico não pode usar a extensão VISÍVEL do mapa como área de
+// referência: dar zoom out ou arrastar o mapa muda o que "conta", e sempre
+// que o retângulo visível passa da fronteira ele pega manguezal de município
+// vizinho — o número deixa de significar "manguezal de Balneário Barra do
+// Sul". A malha oficial do IBGE (código 4202008) é o polígono real da
+// fronteira municipal, não uma aproximação — usada tanto pro bbox de busca
+// quanto (via ponto-dentro-do-polígono abaixo) pra excluir células que caem
+// fora da fronteira mas dentro do bbox retangular (litoral é irregular).
+const IBGE_MUNICIPIO_CODE = 4202057;
+const IBGE_MALHA_URL = `https://servicodados.ibge.gov.br/api/v3/malhas/municipios/${IBGE_MUNICIPIO_CODE}?formato=application/vnd.geo+json&qualidade=maxima`;
+
+let municipioPromise = null;
+function getMunicipioPolygon() {
+  if (!municipioPromise) {
+    municipioPromise = (async () => {
+      const res = await fetch(IBGE_MALHA_URL);
+      if (!res.ok) throw new Error(`IBGE Malhas Municipais respondeu ${res.status}`);
+      const geojson = await res.json();
+      const geometry = geojson.features[0].geometry;
+      // A malha pode vir como Polygon ou MultiPolygon dependendo do
+      // município — normaliza pra sempre trabalhar com uma lista de anéis.
+      const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+      let west = Infinity;
+      let south = Infinity;
+      let east = -Infinity;
+      let north = -Infinity;
+      for (const rings of polygons) {
+        for (const [lon, lat] of rings[0]) {
+          if (lon < west) west = lon;
+          if (lon > east) east = lon;
+          if (lat < south) south = lat;
+          if (lat > north) north = lat;
+        }
+      }
+      return { polygons, bbox: [west, south, east, north] };
+    })();
+    municipioPromise.catch(() => {
+      municipioPromise = null;
+    });
+  }
+  return municipioPromise;
+}
+
+// Ray casting padrão (contagem de cruzamentos par/ímpar). Só o anel externo
+// de cada polígono importa aqui — a malha do IBGE não tem buraco/enclave
+// interno nesse município.
+function pointInPolygons(lon, lat, polygons) {
+  let inside = false;
+  for (const rings of polygons) {
+    const ring = rings[0];
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      const crosses = yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+      if (crosses) inside = !inside;
+    }
+  }
+  return inside;
+}
+
 const gmwTileGridCache = new Map(); // `${ano}:${nome da tile}` -> Promise<{ grid, bbox } | null>
 function getGmwTileGrid(year, name) {
   const key = `${year}:${name}`;
@@ -652,8 +713,10 @@ function getGmwTileGrid(year, name) {
 
 // Máscara + área (ha) de manguezal num bbox, pra um ano — usado tanto pela
 // camada visual (grade fina, 1 ano) quanto pelo histórico (grade grosseira,
-// 11 anos de uma vez).
-async function computeGmwExtent(west, south, east, north, cols, rows, year) {
+// 11 anos de uma vez). `polygons`, quando passado, exclui da área (não do
+// desenho da máscara) as células fora da fronteira municipal — ver
+// getMunicipioPolygon acima.
+async function computeGmwExtent(west, south, east, north, cols, rows, year, polygons = null) {
   const tileNames = integerTilesForBbox(west, south, east, north).map((t) =>
     gmwTileNameForYear(year, t),
   );
@@ -662,10 +725,12 @@ async function computeGmwExtent(west, south, east, north, cols, rows, year) {
   );
 
   const mangrove = new Array(cols * rows).fill(0);
+  const withinMunicipio = polygons ? new Array(cols * rows).fill(false) : null;
   for (let row = 0; row < rows; row++) {
     const lat = north - (row / (rows - 1)) * (north - south);
     for (let col = 0; col < cols; col++) {
       const lon = west + (col / (cols - 1)) * (east - west);
+      if (withinMunicipio) withinMunicipio[row * cols + col] = pointInPolygons(lon, lat, polygons);
       for (const t of tiles) {
         const [tw, ts, te, tn] = t.bbox;
         if (lon < tw || lon > te || lat < ts || lat > tn) continue;
@@ -689,7 +754,9 @@ async function computeGmwExtent(west, south, east, north, cols, rows, year) {
     ((east - west) / cols) *
     metersPerDegreeLng *
     (((north - south) / rows) * METERS_PER_DEGREE_LAT);
-  const mangroveCells = mangrove.reduce((s, v) => s + v, 0);
+  const mangroveCells = withinMunicipio
+    ? mangrove.reduce((s, v, i) => s + (v && withinMunicipio[i] ? 1 : 0), 0)
+    : mangrove.reduce((s, v) => s + v, 0);
   const areaHa = Math.round((mangroveCells * cellAreaM2) / 10_000);
 
   return { mangrove, areaHa };
@@ -717,28 +784,33 @@ app.get("/mangrove-extent-gmw", async (req, res) => {
   }
 });
 
-// Baixa resolução (só a área total importa, não o desenho da mancha) — troca
-// detalhe por velocidade, já que aqui são 11 anos de uma vez em vez de 1.
-const GMW_HISTORY_GRID = 48;
-const gmwHistoryCache = new Map();
+// Grade fixa (não depende mais de viewport, então não precisa escalar com
+// tamanho de tela) — 200 células já passa da resolução real do dado mais
+// grosso (v3, 25m) pro tamanho do município inteiro, sem gastar tempo à toa.
+const GMW_HISTORY_GRID = 200;
+let gmwHistoryPromise = null;
 const GMW_HISTORY_TTL_MS = 6 * 60 * 60 * 1000;
+let gmwHistoryAt = 0;
 
-app.get("/mangrove-extent-history", async (req, res) => {
-  const west = Number(req.query.west);
-  const south = Number(req.query.south);
-  const east = Number(req.query.east);
-  const north = Number(req.query.north);
-  if (![west, south, east, north].every(Number.isFinite)) {
-    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+// Sem parâmetros de bbox: o histórico é sempre do MUNICÍPIO inteiro (limite
+// oficial do IBGE), nunca da área visível do mapa — ver comentário de
+// getMunicipioPolygon acima pra entender por quê (viewport pega município
+// vizinho sempre que o usuário dá zoom out ou arrasta o mapa).
+app.get("/mangrove-extent-history", async (_req, res) => {
+  if (gmwHistoryPromise && Date.now() - gmwHistoryAt < GMW_HISTORY_TTL_MS) {
+    try {
+      return res
+        .set("Cache-Control", "public, max-age=3600")
+        .json({ data: await gmwHistoryPromise });
+    } catch {
+      // cache inválido (a promise rejeitou) — recalcula abaixo
+    }
   }
 
-  const key = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
-  const hit = gmwHistoryCache.get(key);
-  if (hit && Date.now() - hit.at < GMW_HISTORY_TTL_MS) {
-    return res.set("Cache-Control", "public, max-age=3600").json({ data: hit.data });
-  }
-
-  try {
+  gmwHistoryAt = Date.now();
+  gmwHistoryPromise = (async () => {
+    const municipio = await getMunicipioPolygon();
+    const [west, south, east, north] = municipio.bbox;
     const years = await Promise.all(
       GMW_HISTORY_YEARS.map(async (year) => {
         const { areaHa } = await computeGmwExtent(
@@ -749,13 +821,19 @@ app.get("/mangrove-extent-history", async (req, res) => {
           GMW_HISTORY_GRID,
           GMW_HISTORY_GRID,
           year,
+          municipio.polygons,
         );
         return { year, areaHa };
       }),
     );
+    return { bbox: municipio.bbox, municipio: "Balneário Barra do Sul", years };
+  })();
+  gmwHistoryPromise.catch(() => {
+    gmwHistoryPromise = null;
+  });
 
-    const data = { bbox: [west, south, east, north], years };
-    gmwHistoryCache.set(key, { at: Date.now(), data });
+  try {
+    const data = await gmwHistoryPromise;
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });
