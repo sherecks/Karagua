@@ -596,11 +596,41 @@ function gmwTileName(tile) {
   return `GMW_${formatTileCore(tile, { northBased: true })}_v4019_mng.tif`;
 }
 
-const gmwTileGridCache = new Map(); // nome da tile -> Promise<{ grid, bbox } | null>
-function getGmwTileGrid(name) {
-  if (gmwTileGridCache.has(name)) return gmwTileGridCache.get(name);
+// ── Histórico (Global Mangrove Watch v3.0, 1996-2020) ──────────────────────
+// Complementa o v4 acima (só 2020): o v3 publica 11 fotografias anuais da
+// MESMA extensão de manguezal (1996, 2007-2010, 2015-2020), uma abaixo do
+// outro em zips separados no mesmo Zenodo, com a MESMA convenção de tile
+// (canto noroeste) — confirmado testando o zip de 1996 ao vivo antes de
+// integrar. Resolução mais baixa que o v4 (25m JAXA/Landsat vs 10m
+// Sentinel-2): por isso 2020 continua vindo do v4 acima (mais preciso), e o
+// v3 cobre só os anos que o v4 não tem. DOI 10.5281/zenodo.6894273.
+const GMW_V3_YEARS = [1996, 2007, 2008, 2009, 2010, 2015, 2016, 2017, 2018, 2019];
+const GMW_HISTORY_YEARS = [...GMW_V3_YEARS, GMW_YEAR].sort((a, b) => a - b);
+const GMW_V3_ZIP_URL = (year) =>
+  `https://zenodo.org/api/records/6894273/files/gmw_v3_${year}_gtiff.zip/content`;
+
+const gmwV3DirectoryPromises = new Map(); // ano -> Promise<directory>
+function getGmwV3Directory(year) {
+  if (!gmwV3DirectoryPromises.has(year)) {
+    const promise = unzipper.Open.custom(gmwUrlSource(GMW_V3_ZIP_URL(year)));
+    promise.catch(() => gmwV3DirectoryPromises.delete(year));
+    gmwV3DirectoryPromises.set(year, promise);
+  }
+  return gmwV3DirectoryPromises.get(year);
+}
+
+function gmwTileNameForYear(year, tile) {
+  if (year === GMW_YEAR) return gmwTileName(tile);
+  const core = formatTileCore(tile, { northBased: true });
+  return `gmw_v3_${year}/GMW_${core}_${year}_v3.tif`;
+}
+
+const gmwTileGridCache = new Map(); // `${ano}:${nome da tile}` -> Promise<{ grid, bbox } | null>
+function getGmwTileGrid(year, name) {
+  const key = `${year}:${name}`;
+  if (gmwTileGridCache.has(key)) return gmwTileGridCache.get(key);
   const promise = (async () => {
-    const directory = await getGmwDirectory();
+    const directory = year === GMW_YEAR ? await getGmwDirectory() : await getGmwV3Directory(year);
     const entry = directory.files.find((f) => f.path === name);
     if (!entry) return null; // tile não existe no dataset = sem manguezal ali (é esparso, só existem tiles com dado)
     const buf = await entry.buffer();
@@ -615,9 +645,54 @@ function getGmwTileGrid(name) {
     });
     return { grid, bbox: image.getBoundingBox() };
   })();
-  gmwTileGridCache.set(name, promise);
-  promise.catch(() => gmwTileGridCache.delete(name));
+  gmwTileGridCache.set(key, promise);
+  promise.catch(() => gmwTileGridCache.delete(key));
   return promise;
+}
+
+// Máscara + área (ha) de manguezal num bbox, pra um ano — usado tanto pela
+// camada visual (grade fina, 1 ano) quanto pelo histórico (grade grosseira,
+// 11 anos de uma vez).
+async function computeGmwExtent(west, south, east, north, cols, rows, year) {
+  const tileNames = integerTilesForBbox(west, south, east, north).map((t) =>
+    gmwTileNameForYear(year, t),
+  );
+  const tiles = (await Promise.all(tileNames.map((name) => getGmwTileGrid(year, name)))).filter(
+    Boolean,
+  );
+
+  const mangrove = new Array(cols * rows).fill(0);
+  for (let row = 0; row < rows; row++) {
+    const lat = north - (row / (rows - 1)) * (north - south);
+    for (let col = 0; col < cols; col++) {
+      const lon = west + (col / (cols - 1)) * (east - west);
+      for (const t of tiles) {
+        const [tw, ts, te, tn] = t.bbox;
+        if (lon < tw || lon > te || lat < ts || lat > tn) continue;
+        const srcRow = Math.min(
+          GMW_TILE_GRID - 1,
+          Math.max(0, Math.round(((tn - lat) / (tn - ts)) * (GMW_TILE_GRID - 1))),
+        );
+        const srcCol = Math.min(
+          GMW_TILE_GRID - 1,
+          Math.max(0, Math.round(((lon - tw) / (te - tw)) * (GMW_TILE_GRID - 1))),
+        );
+        if (t.grid[srcRow * GMW_TILE_GRID + srcCol]) mangrove[row * cols + col] = 1;
+        break;
+      }
+    }
+  }
+
+  const centerLat = (south + north) / 2;
+  const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
+  const cellAreaM2 =
+    ((east - west) / cols) *
+    metersPerDegreeLng *
+    (((north - south) / rows) * METERS_PER_DEGREE_LAT);
+  const mangroveCells = mangrove.reduce((s, v) => s + v, 0);
+  const areaHa = Math.round((mangroveCells * cellAreaM2) / 10_000);
+
+  return { mangrove, areaHa };
 }
 
 app.get("/mangrove-extent-gmw", async (req, res) => {
@@ -630,43 +705,57 @@ app.get("/mangrove-extent-gmw", async (req, res) => {
   }
   const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
   const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
+  const requestedYear = Number(req.query.year);
+  const year = GMW_HISTORY_YEARS.includes(requestedYear) ? requestedYear : GMW_YEAR;
 
   try {
-    const tileNames = integerTilesForBbox(west, south, east, north).map(gmwTileName);
-    const tiles = (await Promise.all(tileNames.map(getGmwTileGrid))).filter(Boolean);
+    const { mangrove, areaHa } = await computeGmwExtent(west, south, east, north, cols, rows, year);
+    const data = { bbox: [west, south, east, north], cols, rows, mangrove, areaHa, year };
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
 
-    const mangrove = new Array(cols * rows).fill(0);
-    for (let row = 0; row < rows; row++) {
-      const lat = north - (row / (rows - 1)) * (north - south);
-      for (let col = 0; col < cols; col++) {
-        const lon = west + (col / (cols - 1)) * (east - west);
-        for (const t of tiles) {
-          const [tw, ts, te, tn] = t.bbox;
-          if (lon < tw || lon > te || lat < ts || lat > tn) continue;
-          const srcRow = Math.min(
-            GMW_TILE_GRID - 1,
-            Math.max(0, Math.round(((tn - lat) / (tn - ts)) * (GMW_TILE_GRID - 1))),
-          );
-          const srcCol = Math.min(
-            GMW_TILE_GRID - 1,
-            Math.max(0, Math.round(((lon - tw) / (te - tw)) * (GMW_TILE_GRID - 1))),
-          );
-          if (t.grid[srcRow * GMW_TILE_GRID + srcCol]) mangrove[row * cols + col] = 1;
-          break;
-        }
-      }
-    }
+// Baixa resolução (só a área total importa, não o desenho da mancha) — troca
+// detalhe por velocidade, já que aqui são 11 anos de uma vez em vez de 1.
+const GMW_HISTORY_GRID = 48;
+const gmwHistoryCache = new Map();
+const GMW_HISTORY_TTL_MS = 6 * 60 * 60 * 1000;
 
-    const centerLat = (south + north) / 2;
-    const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
-    const cellAreaM2 =
-      ((east - west) / cols) *
-      metersPerDegreeLng *
-      (((north - south) / rows) * METERS_PER_DEGREE_LAT);
-    const mangroveCells = mangrove.reduce((s, v) => s + v, 0);
-    const areaHa = Math.round((mangroveCells * cellAreaM2) / 10_000);
+app.get("/mangrove-extent-history", async (req, res) => {
+  const west = Number(req.query.west);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const north = Number(req.query.north);
+  if (![west, south, east, north].every(Number.isFinite)) {
+    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+  }
 
-    const data = { bbox: [west, south, east, north], cols, rows, mangrove, areaHa, year: GMW_YEAR };
+  const key = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
+  const hit = gmwHistoryCache.get(key);
+  if (hit && Date.now() - hit.at < GMW_HISTORY_TTL_MS) {
+    return res.set("Cache-Control", "public, max-age=3600").json({ data: hit.data });
+  }
+
+  try {
+    const years = await Promise.all(
+      GMW_HISTORY_YEARS.map(async (year) => {
+        const { areaHa } = await computeGmwExtent(
+          west,
+          south,
+          east,
+          north,
+          GMW_HISTORY_GRID,
+          GMW_HISTORY_GRID,
+          year,
+        );
+        return { year, areaHa };
+      }),
+    );
+
+    const data = { bbox: [west, south, east, north], years };
+    gmwHistoryCache.set(key, { at: Date.now(), data });
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });

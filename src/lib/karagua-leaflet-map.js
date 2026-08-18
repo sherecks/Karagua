@@ -19,6 +19,8 @@ class KaraguaLeafletMap extends HTMLElement {
     this._windActive = false;
     this._gmwExtentLayer = null;
     this._gmwExtentActive = false;
+    this._gmwExtentYear = 2020;
+    this._historyLoaded = false;
     this._gmwExtentRequestId = 0;
     this._areaSelectActive = false;
     this._areaSelectFirstCorner = null;
@@ -295,6 +297,30 @@ class KaraguaLeafletMap extends HTMLElement {
           color: #fff;
           border-color: #1A2332;
         }
+        .gmw-year-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 4px 0 0 23px;
+        }
+        .gmw-year-label { font-size: 11px; color: #6B7B8D; }
+        .gmw-year-select {
+          font-family: 'Aileron', sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          color: #2C3E50;
+          background: #FBF9F4;
+          border: 1px solid #E8E4DC;
+          border-radius: 4px;
+          padding: 2px 6px;
+          cursor: pointer;
+        }
+        .history-hint { font-size: 11px; color: #6B7B8D; margin: 0 0 8px; line-height: 1.4; }
+        .history-chart { display: block; overflow: visible; }
+        .history-chart rect { transition: opacity 0.15s; }
+        .history-chart rect:hover { opacity: 0.75; }
+        .history-loading { font-size: 12px; color: #6B7B8D; padding: 8px 0; }
+        .history-error { font-size: 12px; color: #b23b3b; padding: 8px 0; }
         #map.area-select-mode { cursor: crosshair; }
         #points-section { margin-top: 0; }
         .points-group-label {
@@ -448,8 +474,37 @@ class KaraguaLeafletMap extends HTMLElement {
               <input type="checkbox" id="gmw-extent-toggle">
               <span>Concentração de manguezal</span>
             </label>
+            <div class="gmw-year-row" id="gmw-year-row" hidden>
+              <span class="gmw-year-label">Ano</span>
+              <select id="gmw-year-select" class="gmw-year-select">
+                <option value="1996">1996</option>
+                <option value="2007">2007</option>
+                <option value="2008">2008</option>
+                <option value="2009">2009</option>
+                <option value="2010">2010</option>
+                <option value="2015">2015</option>
+                <option value="2016">2016</option>
+                <option value="2017">2017</option>
+                <option value="2018">2018</option>
+                <option value="2019">2019</option>
+                <option value="2020" selected>2020</option>
+              </select>
+            </div>
             <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m</span>
             <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
+          </div>
+        </div>
+        <div class="panel-divider"></div>
+        <div class="side-section collapsed" id="history-section" data-section="history">
+          <button type="button" class="section-header" aria-expanded="false">
+            <span>Histórico do manguezal</span>
+            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="section-body" id="history-body">
+            <p class="history-hint">Área de manguezal (ha) na região visível do mapa, por ano.</p>
+            <div id="history-chart-wrap"></div>
+            <button type="button" id="history-refresh-btn" class="layer-button">Calcular pra área atual</button>
+            <span class="layer-credit" id="history-credit"></span>
           </div>
         </div>
         <div class="panel-divider"></div>
@@ -518,6 +573,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._initWindToggle();
     this._initGmwExtentToggle();
     this._initAreaSelectTool();
+    this._initHistorySection();
 
     this.dispatchEvent(
       new CustomEvent("map-ready", {
@@ -1086,8 +1142,22 @@ class KaraguaLeafletMap extends HTMLElement {
   // preenchimento sólido de uma cor só.
   _initGmwExtentToggle() {
     const toggle = this.shadowRoot.getElementById("gmw-extent-toggle");
+    const yearRow = this.shadowRoot.getElementById("gmw-year-row");
+    const yearSelect = this.shadowRoot.getElementById("gmw-year-select");
     if (!toggle) return;
-    toggle.addEventListener("change", () => void this._setGmwExtentVisible(toggle.checked));
+    toggle.addEventListener("change", () => {
+      if (yearRow) yearRow.hidden = !toggle.checked;
+      void this._setGmwExtentVisible(toggle.checked);
+    });
+    // Seletor de ano: troca a fonte (GMW v3 pra 1996-2019, v4 pra 2020 — a
+    // única disponível a 10m) e refaz o fetch pra comparar visualmente como
+    // a mancha de manguezal mudou de um ano pro outro na mesma área.
+    if (yearSelect) {
+      yearSelect.addEventListener("change", () => {
+        this._gmwExtentYear = Number(yearSelect.value);
+        if (this._gmwExtentActive) void this._refreshGmwExtent();
+      });
+    }
   }
 
   async _setGmwExtentVisible(on) {
@@ -1121,7 +1191,7 @@ class KaraguaLeafletMap extends HTMLElement {
     let data;
     try {
       const res = await fetch(
-        `${apiUrl.replace(/\/$/, "")}/mangrove-extent-gmw?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}&cols=${cols}&rows=${rows}`,
+        `${apiUrl.replace(/\/$/, "")}/mangrove-extent-gmw?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}&cols=${cols}&rows=${rows}&year=${this._gmwExtentYear}`,
       );
       const body = await res.json();
       if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -1179,8 +1249,87 @@ class KaraguaLeafletMap extends HTMLElement {
 
     const credit = this.shadowRoot.getElementById("gmw-extent-credit");
     if (credit) {
-      credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · Global Mangrove Watch v4 (${data.year})`;
+      // 2020 usa o produto v4 (Sentinel-2, 10m); os outros anos vêm do v3
+      // (JAXA/Landsat, 25m) — resolução mais baixa, então a mancha de anos
+      // anteriores a 2020 é menos detalhada, não necessariamente "menor de
+      // verdade".
+      const source =
+        data.year === 2020
+          ? "Global Mangrove Watch v4 · Sentinel-2, 10m"
+          : "Global Mangrove Watch v3 · JAXA/Landsat, 25m";
+      credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · ${source} (${data.year})`;
     }
+  }
+
+  // Histórico: mesma ideia da camada de concentração acima, mas em vez de UM
+  // ano só, busca a área de manguezal (ha) pra 11 anos (1996-2020) na mesma
+  // região visível, de uma vez — dá pra ver o número mudando ano a ano, não
+  // só a mancha num instante. Carrega sob demanda (só quando a seção abre
+  // pela 1ª vez, ou quando o usuário pede pra recalcular) porque é um
+  // request bem mais pesado que os outros (11 anos × tiles).
+  _initHistorySection() {
+    const section = this.shadowRoot.getElementById("history-section");
+    const header = section?.querySelector(".section-header");
+    const refreshBtn = this.shadowRoot.getElementById("history-refresh-btn");
+    if (header) {
+      header.addEventListener("click", () => {
+        if (!section.classList.contains("collapsed") && !this._historyLoaded) {
+          void this._loadHistory();
+        }
+      });
+    }
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", () => void this._loadHistory());
+    }
+  }
+
+  async _loadHistory() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const wrap = this.shadowRoot.getElementById("history-chart-wrap");
+    const credit = this.shadowRoot.getElementById("history-credit");
+    if (!apiUrl || !wrap) return;
+    this._historyLoaded = true;
+    wrap.innerHTML = `<div class="history-loading">Calculando área por ano (1996-2020)...</div>`;
+
+    const b = this._map.getBounds();
+    try {
+      const res = await fetch(
+        `${apiUrl.replace(/\/$/, "")}/mangrove-extent-history?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}`,
+      );
+      const body = await res.json();
+      if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+      wrap.innerHTML = KaraguaLeafletMap._renderHistoryChart(body.data.years);
+      if (credit) {
+        credit.textContent =
+          "Global Mangrove Watch v3 (1996-2019, 25m) + v4 (2020, 10m) · área na região visível do mapa";
+      }
+    } catch (e) {
+      wrap.innerHTML = `<div class="history-error">Histórico indisponível: ${e.message}</div>`;
+    }
+  }
+
+  // Gráfico de barras em SVG puro (sem lib de gráfico) — mesmo espírito dos
+  // ícones do painel inteiro, já todos SVG à mão.
+  static _renderHistoryChart(years) {
+    if (!years?.length) return `<div class="history-error">Sem dados pra essa área.</div>`;
+    const w = 198;
+    const h = 108;
+    const padBottom = 16;
+    const padTop = 6;
+    const maxHa = Math.max(...years.map((y) => y.areaHa), 1);
+    const barGap = 2;
+    const barW = w / years.length;
+    const bars = years
+      .map((y, i) => {
+        const barH = Math.max(2, ((h - padBottom - padTop) * y.areaHa) / maxHa);
+        const x = i * barW + barGap / 2;
+        const barWidth = barW - barGap;
+        const yPos = h - padBottom - barH;
+        const label = String(y.year).slice(2);
+        return `<rect x="${x.toFixed(1)}" y="${yPos.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" fill="#4E8748" rx="1"><title>${y.year}: ${y.areaHa.toLocaleString("pt-BR")} ha</title></rect><text x="${(x + barWidth / 2).toFixed(1)}" y="${h - 4}" font-size="8" text-anchor="middle" fill="#6B7B8D">'${label}</text>`;
+      })
+      .join("");
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" class="history-chart">${bars}</svg>`;
   }
 
   // Densidade local por tabela de somas (summed-area table): soma numa janela
