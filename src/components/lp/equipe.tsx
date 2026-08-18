@@ -19,7 +19,7 @@ const members = [
     credencial: "Caracterização ambiental e supervisão do monitoramento georreferenciado.",
   },
   {
-    nome: "Karol Dutra",
+    nome: "Karoline Ducci",
     papel: "Análises técnicas",
     credencial: "Análises técnicas que sustentam a certificação Verra.",
   },
