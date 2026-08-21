@@ -20,6 +20,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._gmwExtentLayer = null;
     this._gmwExtentActive = false;
     this._gmwExtentYear = 2020;
+    this._gmwYearDebounce = 0;
     this._historyLoaded = false;
     this._gmwExtentRequestId = 0;
     this._areaSelectActive = false;
@@ -298,23 +299,61 @@ class KaraguaLeafletMap extends HTMLElement {
           border-color: #1A2332;
         }
         .gmw-year-row {
+          margin: 6px 0 0 23px;
+        }
+        .gmw-year-row-top {
           display: flex;
           align-items: center;
-          gap: 8px;
-          margin: 4px 0 0 23px;
+          justify-content: space-between;
+          margin-bottom: 2px;
         }
         .gmw-year-label { font-size: 11px; color: #6B7B8D; }
-        .gmw-year-select {
-          font-family: 'Aileron', sans-serif;
-          font-size: 12px;
-          font-weight: 600;
+        .gmw-year-value {
+          font-size: 13px;
+          font-weight: 700;
           color: #2C3E50;
-          background: #FBF9F4;
-          border: 1px solid #E8E4DC;
-          border-radius: 4px;
-          padding: 2px 6px;
+          font-variant-numeric: tabular-nums;
+        }
+        .gmw-year-slider {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 100%;
+          height: 4px;
+          border-radius: 2px;
+          background: #E8E4DC;
+          cursor: pointer;
+          outline: none;
+        }
+        .gmw-year-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 15px;
+          height: 15px;
+          border-radius: 50%;
+          background: #4E8748;
+          border: 2px solid #FBF9F4;
+          box-shadow: 0 0 0 1px #4E8748;
           cursor: pointer;
         }
+        .gmw-year-slider::-moz-range-thumb {
+          width: 15px;
+          height: 15px;
+          border-radius: 50%;
+          background: #4E8748;
+          border: 2px solid #FBF9F4;
+          box-shadow: 0 0 0 1px #4E8748;
+          cursor: pointer;
+        }
+        .gmw-year-slider:focus-visible {
+          outline: 3px solid rgba(199,217,38,0.4);
+          outline-offset: 2px;
+        }
+        .gmw-year-ticks {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 2px;
+        }
+        .gmw-year-ticks span { font-size: 9px; color: #A8A296; }
         .history-hint { font-size: 11px; color: #6B7B8D; margin: 0 0 8px; line-height: 1.4; }
         .history-chart { display: block; overflow: visible; }
         .history-chart rect { transition: opacity 0.15s; }
@@ -475,20 +514,21 @@ class KaraguaLeafletMap extends HTMLElement {
               <span>Concentração de manguezal</span>
             </label>
             <div class="gmw-year-row" id="gmw-year-row" hidden>
-              <span class="gmw-year-label">Ano</span>
-              <select id="gmw-year-select" class="gmw-year-select">
-                <option value="1996">1996</option>
-                <option value="2007">2007</option>
-                <option value="2008">2008</option>
-                <option value="2009">2009</option>
-                <option value="2010">2010</option>
-                <option value="2015">2015</option>
-                <option value="2016">2016</option>
-                <option value="2017">2017</option>
-                <option value="2018">2018</option>
-                <option value="2019">2019</option>
-                <option value="2020" selected>2020</option>
-              </select>
+              <div class="gmw-year-row-top">
+                <span class="gmw-year-label">Ano</span>
+                <span class="gmw-year-value" id="gmw-year-value">2020</span>
+              </div>
+              <input
+                type="range"
+                id="gmw-year-slider"
+                class="gmw-year-slider"
+                min="0"
+                max="10"
+                step="1"
+                value="10"
+                aria-label="Ano da camada de manguezal"
+              >
+              <div class="gmw-year-ticks"><span>1996</span><span>2020</span></div>
             </div>
             <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m</span>
             <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
@@ -1140,22 +1180,36 @@ class KaraguaLeafletMap extends HTMLElement {
   // canvas aqui no cliente — o filtro #concentration-heat (.gmw-heat-tint)
   // então converte essa densidade num gradiente de calor de verdade, não um
   // preenchimento sólido de uma cor só.
+  // Anos com dado real disponível (mesma lista do back-end,
+  // GMW_HISTORY_YEARS em api/index.js) — o slider anda por ÍNDICE nessa
+  // lista, não pelo ano em si, porque os anos não são igualmente espaçados
+  // (pula de 2010 pra 2015, por exemplo).
+  static _GMW_YEARS = [1996, 2007, 2008, 2009, 2010, 2015, 2016, 2017, 2018, 2019, 2020];
+
   _initGmwExtentToggle() {
     const toggle = this.shadowRoot.getElementById("gmw-extent-toggle");
     const yearRow = this.shadowRoot.getElementById("gmw-year-row");
-    const yearSelect = this.shadowRoot.getElementById("gmw-year-select");
+    const yearSlider = this.shadowRoot.getElementById("gmw-year-slider");
+    const yearValue = this.shadowRoot.getElementById("gmw-year-value");
     if (!toggle) return;
     toggle.addEventListener("change", () => {
       if (yearRow) yearRow.hidden = !toggle.checked;
       void this._setGmwExtentVisible(toggle.checked);
     });
-    // Seletor de ano: troca a fonte (GMW v3 pra 1996-2019, v4 pra 2020 — a
-    // única disponível a 10m) e refaz o fetch pra comparar visualmente como
-    // a mancha de manguezal mudou de um ano pro outro na mesma área.
-    if (yearSelect) {
-      yearSelect.addEventListener("change", () => {
-        this._gmwExtentYear = Number(yearSelect.value);
-        if (this._gmwExtentActive) void this._refreshGmwExtent();
+    // Barra de arrastar: anda por índice (0-10) na lista de anos disponíveis
+    // acima. "input" dispara continuamente enquanto arrasta (não só ao
+    // soltar) — o número do ano atualiza na hora, e o fetch/redesenho do
+    // overlay é debounced (250ms sem mexer) pra não disparar um request por
+    // pixel arrastado enquanto o dedo/mouse ainda está em movimento.
+    if (yearSlider && yearValue) {
+      yearSlider.addEventListener("input", () => {
+        const year = KaraguaLeafletMap._GMW_YEARS[Number(yearSlider.value)];
+        yearValue.textContent = String(year);
+        this._gmwExtentYear = year;
+        clearTimeout(this._gmwYearDebounce);
+        this._gmwYearDebounce = setTimeout(() => {
+          if (this._gmwExtentActive) void this._refreshGmwExtent();
+        }, 250);
       });
     }
   }
