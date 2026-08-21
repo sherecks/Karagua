@@ -275,12 +275,13 @@ class KaraguaLeafletMap extends HTMLElement {
         .gmw-heat-tint {
           filter: blur(3px) url(#concentration-heat);
         }
-        /* Carbono orgânico do solo: valor já é contínuo por célula (t C/ha),
-           não uma máscara binária — não precisa da densidade por vizinhança
-           do GMW acima, só normaliza direto e reusa o mesmo gradiente de
-           calor pra manter a leitura visual consistente entre as camadas. */
-        .soc-heat-tint {
-          filter: blur(2px) url(#concentration-heat);
+        /* Carbono orgânico do solo: preto e branco (sem o filtro de cor
+           #concentration-heat do GMW acima) — diferencia visualmente as duas
+           camadas de calor quando ligadas junto (a mesma paleta azul→
+           vermelho nas duas confundiria qual camada é qual). Mesmo raio de
+           blur do GMW (3px), só sem a conversão de cor por cima. */
+        .soc-tint {
+          filter: blur(3px);
         }
         .layer-credit {
           display: block;
@@ -521,10 +522,10 @@ class KaraguaLeafletMap extends HTMLElement {
               <span>Vento</span>
             </label>
             <label class="layer-toggle">
-              <input type="checkbox" id="gmw-extent-toggle">
+              <input type="checkbox" id="gmw-extent-toggle" checked>
               <span>Concentração de manguezal</span>
             </label>
-            <div class="gmw-year-row" id="gmw-year-row" hidden>
+            <div class="gmw-year-row" id="gmw-year-row">
               <div class="gmw-year-row-top">
                 <span class="gmw-year-label">Ano</span>
                 <span class="gmw-year-value" id="gmw-year-value">2020</span>
@@ -1232,6 +1233,10 @@ class KaraguaLeafletMap extends HTMLElement {
         }, 250);
       });
     }
+    // Concentração de manguezal já vem ligada por padrão (checkbox "checked"
+    // no HTML) — isso só decide a aparência inicial do checkbox, então
+    // precisa ativar a camada de verdade (fetch + overlay) aqui também.
+    if (toggle.checked) void this._setGmwExtentVisible(true);
   }
 
   async _setGmwExtentVisible(on) {
@@ -1421,7 +1426,7 @@ class KaraguaLeafletMap extends HTMLElement {
     } else {
       this._socLayer = L.imageOverlay(url, bounds, {
         pane: "socPane",
-        className: "soc-heat-tint",
+        className: "soc-tint",
         opacity: 0.85,
         interactive: false,
       }).addTo(this._map);
