@@ -23,6 +23,9 @@ class KaraguaLeafletMap extends HTMLElement {
     this._gmwYearDebounce = 0;
     this._historyLoaded = false;
     this._gmwExtentRequestId = 0;
+    this._socLayer = null;
+    this._socActive = false;
+    this._socRequestId = 0;
     this._areaSelectActive = false;
     this._areaSelectFirstCorner = null;
     this._areaSelectRect = null;
@@ -45,6 +48,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._stopWindAnimation();
     if (this._map) {
       this._map.off("moveend zoomend", this._refreshGmwExtent, this);
+      this._map.off("moveend zoomend", this._refreshSoc, this);
       this._map.remove();
     }
   }
@@ -270,6 +274,13 @@ class KaraguaLeafletMap extends HTMLElement {
            vermelho: vermelho/amarelo = concentração alta, azul = baixa. */
         .gmw-heat-tint {
           filter: blur(3px) url(#concentration-heat);
+        }
+        /* Carbono orgânico do solo: valor já é contínuo por célula (t C/ha),
+           não uma máscara binária — não precisa da densidade por vizinhança
+           do GMW acima, só normaliza direto e reusa o mesmo gradiente de
+           calor pra manter a leitura visual consistente entre as camadas. */
+        .soc-heat-tint {
+          filter: blur(2px) url(#concentration-heat);
         }
         .layer-credit {
           display: block;
@@ -531,6 +542,11 @@ class KaraguaLeafletMap extends HTMLElement {
               <div class="gmw-year-ticks"><span>1996</span><span>2020</span></div>
             </div>
             <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m</span>
+            <label class="layer-toggle">
+              <input type="checkbox" id="soc-toggle">
+              <span>Carbono orgânico do solo</span>
+            </label>
+            <span class="layer-credit" id="soc-credit">Sanderman et al. 2018 (atualização 2023) · 30m</span>
             <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
           </div>
         </div>
@@ -601,6 +617,9 @@ class KaraguaLeafletMap extends HTMLElement {
     const gmwPane = this._map.createPane("gmwPane");
     gmwPane.style.zIndex = 290;
     gmwPane.style.pointerEvents = "none";
+    const socPane = this._map.createPane("socPane");
+    socPane.style.zIndex = 291;
+    socPane.style.pointerEvents = "none";
     const windPane = this._map.createPane("windPane");
     windPane.style.zIndex = 350;
     windPane.style.pointerEvents = "none";
@@ -612,6 +631,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._initSectionToggles();
     this._initWindToggle();
     this._initGmwExtentToggle();
+    this._initSocToggle();
     this._initAreaSelectTool();
     this._initHistorySection();
 
@@ -1312,6 +1332,107 @@ class KaraguaLeafletMap extends HTMLElement {
           ? "Global Mangrove Watch v4 · Sentinel-2, 10m"
           : "Global Mangrove Watch v3 · JAXA/Landsat, 25m";
       credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · ${source} (${data.year})`;
+    }
+  }
+
+  // ── Carbono orgânico do solo (Sanderman et al. 2018, atualização 2023) ───
+  // Mesmo padrão da camada de concentração acima (fetch na área visível,
+  // redesenha em moveend/zoomend), mas o valor já vem contínuo por célula
+  // (t C/ha) — não precisa da densidade por vizinhança do GMW, só normaliza
+  // direto. Referência de cor fixa (não o mín/máx da área visível): senão a
+  // mesma cor significaria coisas diferentes dependendo de pra onde você
+  // arrastou o mapa. 600 t/ha cobre com folga a faixa observada aqui (~50-
+  // 480) e a faixa publicada no paper original (86-729 Mg C/ha).
+  static _SOC_COLOR_MAX_THA = 600;
+
+  _initSocToggle() {
+    const toggle = this.shadowRoot.getElementById("soc-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("change", () => void this._setSocVisible(toggle.checked));
+  }
+
+  async _setSocVisible(on) {
+    this._socActive = on;
+    if (!on) {
+      this._map.off("moveend zoomend", this._refreshSoc, this);
+      if (this._socLayer) {
+        this._map.removeLayer(this._socLayer);
+        this._socLayer = null;
+      }
+      return;
+    }
+    this._map.on("moveend zoomend", this._refreshSoc, this);
+    await this._refreshSoc();
+  }
+
+  async _refreshSoc() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (!apiUrl) return;
+
+    const b = this._map.getBounds();
+    const size = this._map.getSize();
+    const maxSide = 300;
+    const scale = Math.min(1, maxSide / Math.max(size.x, size.y));
+    const cols = Math.max(8, Math.round(size.x * scale));
+    const rows = Math.max(8, Math.round(size.y * scale));
+
+    const requestId = ++this._socRequestId;
+    let data;
+    try {
+      const res = await fetch(
+        `${apiUrl.replace(/\/$/, "")}/mangrove-soc?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}&cols=${cols}&rows=${rows}`,
+      );
+      const body = await res.json();
+      if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+      data = body.data;
+    } catch (e) {
+      console.warn("Carbono orgânico do solo indisponível:", e);
+      return;
+    }
+    if (requestId !== this._socRequestId) return;
+
+    const colorMax = KaraguaLeafletMap._SOC_COLOR_MAX_THA;
+    const canvas = document.createElement("canvas");
+    canvas.width = data.cols;
+    canvas.height = data.rows;
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(data.cols, data.rows);
+    for (let i = 0; i < data.socTha.length; i++) {
+      const tha = data.socTha[i];
+      if (tha <= 0) continue;
+      const t = Math.min(1, tha / colorMax);
+      const o = i * 4;
+      const gray = Math.round(t * 255);
+      img.data[o] = gray;
+      img.data[o + 1] = gray;
+      img.data[o + 2] = gray;
+      img.data[o + 3] = Math.min(255, Math.round(40 + t * 215));
+    }
+    ctx.putImageData(img, 0, 0);
+    const url = canvas.toDataURL("image/png");
+
+    const bounds = [
+      [b.getSouth(), b.getWest()],
+      [b.getNorth(), b.getEast()],
+    ];
+    if (this._socLayer) {
+      this._socLayer.setUrl(url);
+      this._socLayer.setBounds(bounds);
+    } else {
+      this._socLayer = L.imageOverlay(url, bounds, {
+        pane: "socPane",
+        className: "soc-heat-tint",
+        opacity: 0.85,
+        interactive: false,
+      }).addTo(this._map);
+    }
+
+    const credit = this.shadowRoot.getElementById("soc-credit");
+    if (credit) {
+      credit.textContent =
+        data.maxTha > 0
+          ? `≈ ${data.minTha}-${data.maxTha} t C/ha na área visível · Sanderman et al. 2018, atual. 2023 · 0-100cm, 30m (${data.period})`
+          : `Sem manguezal mapeado nessa área · Sanderman et al. 2018, atual. 2023 · 0-100cm, 30m`;
     }
   }
 

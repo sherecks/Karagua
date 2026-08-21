@@ -162,3 +162,35 @@ export function fetchMangroveBiomass(bbox: {
   if (bbox.rows) params.set("rows", String(bbox.rows));
   return request<MangroveBiomass>(`/mangrove-biomass?${params.toString()}`);
 }
+
+export type MangroveSoc = {
+  bbox: [west: number, south: number, east: number, north: number];
+  cols: number;
+  rows: number;
+  socTha: number[];
+  minTha: number;
+  maxTha: number;
+  period: string;
+};
+
+/** Grade real de carbono orgânico do solo (t C/ha, 0-100cm) na mesma área —
+ *  Sanderman et al. 2018 (atualização 2023), calibrado especificamente pra
+ *  manguezal. Ver api/index.js:/mangrove-soc. */
+export function fetchMangroveSoc(bbox: {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  cols?: number;
+  rows?: number;
+}) {
+  const params = new URLSearchParams({
+    west: String(bbox.west),
+    south: String(bbox.south),
+    east: String(bbox.east),
+    north: String(bbox.north),
+  });
+  if (bbox.cols) params.set("cols", String(bbox.cols));
+  if (bbox.rows) params.set("rows", String(bbox.rows));
+  return request<MangroveSoc>(`/mangrove-soc?${params.toString()}`);
+}

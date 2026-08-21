@@ -6,7 +6,7 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { NetCDFReader } = require("netcdfjs");
-const { fromArrayBuffer: geotiffFromArrayBuffer } = require("geotiff");
+const { fromArrayBuffer: geotiffFromArrayBuffer, fromUrl: geotiffFromUrl } = require("geotiff");
 const unzipper = require("unzipper");
 const { Readable, PassThrough } = require("stream");
 
@@ -537,6 +537,141 @@ app.get("/mangrove-biomass", async (req, res) => {
       year: ESA_AGB_YEAR,
     };
     biomassCache.set(key, { at: Date.now(), data });
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ── Carbono orgânico do solo (Sanderman et al. 2018, atualização 2023) ────
+// A maior parte do carbono de um manguezal fica no SOLO, não na biomassa
+// acima dele — bem diferente de floresta terrestre comum, que é o que o
+// biomassa (ESA CCI acima) mede. Esse dataset é calibrado especificamente
+// pra manguezal (não solo genérico como o SoilGrids do ISRIC, que
+// subestimaria bastante esse número por não considerar o solo encharcado/
+// anaeróbico), 0-100cm de profundidade, 30m, em toneladas de carbono por
+// hectare. Vem num único GeoTIFF de ~1,5GB cobrindo o mundo inteiro — o
+// Zenodo aceita HTTP Range, então o geotiff.js lê só a janela da nossa área
+// direto da URL remota (testado ao vivo: abrir o cabeçalho ~2s, ler a
+// janela da nossa área ~2s, poucos KB baixados, nunca o arquivo inteiro).
+// DOI 10.5281/zenodo.1469347 (concept) / zenodo.7727569 (v1.2).
+const SOC_URL =
+  "https://zenodo.org/api/records/7727569/files/soc.tha_tnc.mangroves.typology_m_30m_b0..100cm_2019_2020_go_epsg.4326_v1.2.tif/content";
+const SOC_PERIOD = "2019-2020";
+const SOC_GRID_MAX = 320;
+
+let socImagePromise = null;
+function getSocImage() {
+  if (!socImagePromise) {
+    socImagePromise = (async () => {
+      const tiff = await geotiffFromUrl(SOC_URL);
+      const image = await tiff.getImage();
+      return {
+        image,
+        bbox: image.getBoundingBox(),
+        width: image.getWidth(),
+        height: image.getHeight(),
+      };
+    })();
+    socImagePromise.catch(() => {
+      socImagePromise = null;
+    });
+  }
+  return socImagePromise;
+}
+
+const socCache = new Map();
+const SOC_TTL_MS = 6 * 60 * 60 * 1000;
+
+app.get("/mangrove-soc", async (req, res) => {
+  const west = Number(req.query.west);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const north = Number(req.query.north);
+  if (![west, south, east, north].every(Number.isFinite)) {
+    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+  }
+  const cols = Math.min(SOC_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
+  const rows = Math.min(SOC_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
+
+  const key = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}:${cols}x${rows}`;
+  const hit = socCache.get(key);
+  if (hit && Date.now() - hit.at < SOC_TTL_MS) {
+    return res.set("Cache-Control", "public, max-age=3600").json({ data: hit.data });
+  }
+
+  try {
+    const soc = await getSocImage();
+    const [tw, ts, te, tn] = soc.bbox;
+    const clipWest = Math.max(west, tw);
+    const clipEast = Math.min(east, te);
+    const clipSouth = Math.max(south, ts);
+    const clipNorth = Math.min(north, tn);
+
+    const socTha = new Array(cols * rows).fill(0);
+    let minTha = Infinity;
+    let maxTha = 0;
+
+    if (clipWest < clipEast && clipSouth < clipNorth) {
+      const colStart = Math.max(0, Math.ceil(((clipWest - west) / (east - west)) * (cols - 1)));
+      const colEnd = Math.min(
+        cols - 1,
+        Math.floor(((clipEast - west) / (east - west)) * (cols - 1)),
+      );
+      const rowStart = Math.max(0, Math.ceil(((north - clipNorth) / (north - south)) * (rows - 1)));
+      const rowEnd = Math.min(
+        rows - 1,
+        Math.floor(((north - clipSouth) / (north - south)) * (rows - 1)),
+      );
+
+      if (colEnd >= colStart && rowEnd >= rowStart) {
+        const subCols = colEnd - colStart + 1;
+        const subRows = rowEnd - rowStart + 1;
+
+        const subWest = west + (colStart / (cols - 1)) * (east - west);
+        const subEast = west + (colEnd / (cols - 1)) * (east - west);
+        const subNorth = north - (rowStart / (rows - 1)) * (north - south);
+        const subSouth = north - (rowEnd / (rows - 1)) * (north - south);
+
+        const xMin = Math.max(0, Math.floor(((subWest - tw) / (te - tw)) * soc.width));
+        const xMax = Math.min(soc.width, Math.ceil(((subEast - tw) / (te - tw)) * soc.width));
+        const yMin = Math.max(0, Math.floor(((tn - subNorth) / (tn - ts)) * soc.height));
+        const yMax = Math.min(soc.height, Math.ceil(((tn - subSouth) / (tn - ts)) * soc.height));
+
+        if (xMax > xMin && yMax > yMin) {
+          const [grid] = await soc.image.readRasters({
+            window: [xMin, yMin, xMax, yMax],
+            width: subCols,
+            height: subRows,
+            resampleMethod: "bilinear",
+          });
+          for (let r = 0; r < subRows; r++) {
+            for (let c = 0; c < subCols; c++) {
+              const raw = grid[r * subCols + c];
+              // nodata = -32768 (int16); qualquer valor real de SOC é positivo.
+              const tha = Number.isFinite(raw) && raw > 0 ? Math.round(raw) : 0;
+              socTha[(rowStart + r) * cols + (colStart + c)] = tha;
+              if (tha > 0) {
+                if (tha < minTha) minTha = tha;
+                if (tha > maxTha) maxTha = tha;
+              }
+            }
+          }
+        }
+      }
+    }
+    if (!Number.isFinite(minTha)) minTha = 0;
+
+    const data = {
+      bbox: [west, south, east, north],
+      cols,
+      rows,
+      socTha,
+      minTha,
+      maxTha,
+      period: SOC_PERIOD,
+    };
+    socCache.set(key, { at: Date.now(), data });
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });

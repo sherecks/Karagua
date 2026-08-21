@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   fetchMangroveBiomass,
   fetchMangroveHeightmap,
+  fetchMangroveSoc,
   type MangroveBiomass,
   type MangroveHeightmap,
+  type MangroveSoc,
 } from "@/lib/api";
 import { createPointCloudScene, type PointCloudSceneHandle } from "./point-cloud-scene";
 
@@ -12,7 +14,12 @@ type Bbox = { west: number; south: number; east: number; north: number };
 type Status =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; data: MangroveHeightmap; biomass: MangroveBiomass | null };
+  | {
+      kind: "ready";
+      data: MangroveHeightmap;
+      biomass: MangroveBiomass | null;
+      soc: MangroveSoc | null;
+    };
 
 // Fatores padrão do IPCC (2006 Guidelines for AFOLU) — os mesmos usados por
 // qualquer projeto de carbono florestal, incluindo os de manguezal (VM0033):
@@ -39,6 +46,24 @@ function totalCo2eTonnes(biomass: MangroveBiomass): number {
   return totalAgbTonnes * CARBON_FRACTION * CO2_PER_CARBON;
 }
 
+/** Mesma soma célula a célula da biomassa acima, mas pro pool de carbono do
+ *  SOLO — sem o fator 0,47: o dado de solo já é carbono (t C/ha), não
+ *  biomassa seca, então só falta a razão CO2/C pra virar CO2e. Pool
+ *  reportado SEPARADO do da biomassa (não somado num único total): um
+ *  projeto de carbono de verdade também reporta os pools separadamente
+ *  (VM0033), então misturar os dois aqui só confundiria qual número vem de
+ *  qual fonte. */
+function totalSoilCo2eTonnes(soc: MangroveSoc): number {
+  const [west, south, east, north] = soc.bbox;
+  const centerLat = (south + north) / 2;
+  const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
+  const cellWidthM = ((east - west) / soc.cols) * metersPerDegreeLng;
+  const cellHeightM = ((north - south) / soc.rows) * METERS_PER_DEGREE_LAT;
+  const cellAreaHa = (cellWidthM * cellHeightM) / 10_000;
+  const totalSocTonnes = soc.socTha.reduce((sum, v) => sum + v * cellAreaHa, 0);
+  return totalSocTonnes * CO2_PER_CARBON;
+}
+
 export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -50,12 +75,14 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
     // pontos vizinhos (menos "quadrado", mais relevo). 320 já é o teto que o
     // back-end aceita (MANGROVE_GRID_MAX).
     const cols = window.matchMedia("(min-width: 1024px)").matches ? 320 : 160;
-    // Biomassa (ESA) é opcional: se falhar, a nuvem de pontos ainda funciona
-    // com altura real (NASA) sozinha — nunca bloqueia a visualização.
+    // Biomassa (ESA) e carbono do solo (Sanderman) são opcionais: se
+    // falharem, a nuvem de pontos ainda funciona com altura real (NASA)
+    // sozinha — nunca bloqueiam a visualização.
     void Promise.all([
       fetchMangroveHeightmap({ ...bbox, cols, rows: cols }),
       fetchMangroveBiomass({ ...bbox, cols, rows: cols }),
-    ]).then(([heightResult, biomassResult]) => {
+      fetchMangroveSoc({ ...bbox, cols, rows: cols }),
+    ]).then(([heightResult, biomassResult, socResult]) => {
       if (cancelled) return;
       if (heightResult.error || !heightResult.data) {
         setStatus({
@@ -64,7 +91,12 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
         });
         return;
       }
-      setStatus({ kind: "ready", data: heightResult.data, biomass: biomassResult.data ?? null });
+      setStatus({
+        kind: "ready",
+        data: heightResult.data,
+        biomass: biomassResult.data ?? null,
+        soc: socResult.data ?? null,
+      });
     });
     return () => {
       cancelled = true;
@@ -79,6 +111,7 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let handle: PointCloudSceneHandle | null = createPointCloudScene(container, status.data, {
       reduceMotion,
+      soc: status.soc,
     });
     return () => {
       handle?.dispose();
@@ -120,12 +153,30 @@ export function PointCloudSceneView({ bbox }: { bbox: Bbox }) {
                 manguezal · ~100 m/pixel
               </span>
               <span className="text-k-bright">
-                ≈ {Math.round(totalCo2eTonnes(status.biomass)).toLocaleString("pt-BR")} t CO2e
-                estocadas nessa área
+                ≈ {Math.round(totalCo2eTonnes(status.biomass)).toLocaleString("pt-BR")} t CO2e na
+                biomassa
               </span>
               <span>
                 Fator de carbono IPCC (0,47) · CO2/C = 44/12 — estimativa, não substitui o cálculo
                 oficial de crédito
+              </span>
+            </>
+          )}
+          {status.soc && (
+            <>
+              <span className="text-k-bright">
+                Carbono no solo: {status.soc.minTha}–{status.soc.maxTha} t C/ha
+              </span>
+              <span>
+                Sanderman et al. 2018, atual. 2023 · calibrado pra manguezal · 0-100cm · 30m/pixel
+              </span>
+              <span className="text-k-bright">
+                ≈ {Math.round(totalSoilCo2eTonnes(status.soc)).toLocaleString("pt-BR")} t CO2e no
+                solo
+              </span>
+              <span>
+                CO2/C = 44/12 — pool separado da biomassa (a maior parte do carbono de um manguezal
+                fica no solo, não na vegetação)
               </span>
             </>
           )}

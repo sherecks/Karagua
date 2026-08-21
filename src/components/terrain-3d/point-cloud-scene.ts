@@ -10,6 +10,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { heatColor } from "./height-color-ramp";
+import { soilColor } from "./soil-color-ramp";
 
 export type MangroveHeightmap = {
   bbox: [west: number, south: number, east: number, north: number];
@@ -29,6 +30,15 @@ export type MangroveBiomass = {
   maxMgHa: number;
 };
 
+export type MangroveSoc = {
+  bbox: [west: number, south: number, east: number, north: number];
+  cols: number;
+  rows: number;
+  socTha: number[];
+  minTha: number;
+  maxTha: number;
+};
+
 const METERS_PER_DEGREE_LAT = 111_320;
 // Densidade alta o suficiente pra parecer nuvem/espuma de vegetação (como um
 // viewer LiDAR real) em vez de tufos esparsos — combinada com o raio de
@@ -42,33 +52,38 @@ const MAX_POINTS_PER_COLUMN = 45;
 // parecer "um relevo", não um exagero cartunesco nem uma superfície lisa.
 const TARGET_HEIGHT_FRACTION_OF_EXTENT = 0.16;
 
+// Pool de carbono do SOLO: mesma lógica da coluna de dossel acima, só que
+// pra BAIXO (y negativo) — representa o segundo "pool" de carbono do
+// manguezal, geralmente MAIOR que o da vegetação (a maior parte do carbono
+// de um manguezal fica no solo, não acima dele). Densidade um pouco menor
+// que o dossel (o solo tende a cobrir uma área maior/mais contínua, não
+// precisa de tantos pontos por coluna pra não ficar ralo).
+const MIN_POINTS_PER_SOIL_COLUMN = 8;
+const MAX_POINTS_PER_SOIL_COLUMN = 40;
+const TARGET_SOIL_DEPTH_FRACTION_OF_EXTENT = 0.16;
+
 /** Cor de fundo escura da marca (k-color-surface-carbon), não preto puro. */
 const BACKGROUND_COLOR = 0x1a2332;
 
-// Amostra a altura numa posição FRACIONÁRIA da grade (não só nos índices
-// inteiros de célula) por interpolação bilinear dos 4 vizinhos mais
-// próximos. É o que resolve o efeito de "platô quadrado": sem isso, todo
-// ponto de uma célula usava a MESMA altura (a da célula inteira), então
-// células vizinhas com alturas parecidas formavam degraus retos entre si —
-// com a amostragem contínua, a altura muda suavemente conforme a posição
-// real do ponto (mesmo dentro da "mesma" célula), como um relevo de verdade.
-function bilinearHeightCm(
-  heightCm: number[],
-  cols: number,
-  rows: number,
-  colF: number,
-  rowF: number,
-) {
+// Amostra uma grade (altura OU carbono do solo — qualquer array cols×rows)
+// numa posição FRACIONÁRIA (não só nos índices inteiros de célula) por
+// interpolação bilinear dos 4 vizinhos mais próximos. É o que resolve o
+// efeito de "platô quadrado": sem isso, todo ponto de uma célula usava o
+// MESMO valor (o da célula inteira), então células vizinhas com valores
+// parecidos formavam degraus retos entre si — com a amostragem contínua, o
+// valor muda suavemente conforme a posição real do ponto (mesmo dentro da
+// "mesma" célula), como um relevo de verdade.
+function bilinearSample(grid: number[], cols: number, rows: number, colF: number, rowF: number) {
   const c0 = Math.min(cols - 1, Math.max(0, Math.floor(colF)));
   const c1 = Math.min(cols - 1, c0 + 1);
   const r0 = Math.min(rows - 1, Math.max(0, Math.floor(rowF)));
   const r1 = Math.min(rows - 1, r0 + 1);
   const tc = Math.min(1, Math.max(0, colF - c0));
   const tr = Math.min(1, Math.max(0, rowF - r0));
-  const h00 = heightCm[r0 * cols + c0];
-  const h10 = heightCm[r0 * cols + c1];
-  const h01 = heightCm[r1 * cols + c0];
-  const h11 = heightCm[r1 * cols + c1];
+  const h00 = grid[r0 * cols + c0];
+  const h10 = grid[r0 * cols + c1];
+  const h01 = grid[r1 * cols + c0];
+  const h11 = grid[r1 * cols + c1];
   const top = h00 + (h10 - h00) * tc;
   const bottom = h01 + (h11 - h01) * tc;
   return top + (bottom - top) * tr;
@@ -98,7 +113,7 @@ export type PointCloudSceneHandle = {
 export function createPointCloudScene(
   container: HTMLElement,
   data: MangroveHeightmap,
-  options: { reduceMotion: boolean },
+  options: { reduceMotion: boolean; soc?: MangroveSoc | null },
 ): PointCloudSceneHandle {
   const { cols, rows, heightCm, bbox, maxCm } = data;
   const [west, south, east, north] = bbox;
@@ -119,10 +134,29 @@ export function createPointCloudScene(
   const colorMaxCm = Math.max(percentileSorted(sortedNonZeroCm, 0.95), 1);
   const colorMaxSceneM = (colorMaxCm / 100) * verticalScale;
 
+  // Solo (opcional): só participa se vier na MESMA grade do dossel (mesmo
+  // bbox, mesmo cols/rows pedidos ao back-end) — sem isso não dá pra
+  // combinar os dois pools ponto a ponto. Mesma ideia de escala/cor do
+  // dossel acima, mas em toneladas de carbono por hectare (não precisa
+  // converter cm→m, o dado já vem na unidade final).
+  const soc = options.soc;
+  const socAligned = soc && soc.cols === cols && soc.rows === rows ? soc : null;
+  const maxSocTha = Math.max(socAligned?.maxTha ?? 0, 0.01);
+  const soilVerticalScale = socAligned
+    ? (horizontalExtentM * TARGET_SOIL_DEPTH_FRACTION_OF_EXTENT) / maxSocTha
+    : 0;
+  const sortedNonZeroTha = socAligned
+    ? socAligned.socTha.filter((v) => v > 0).sort((a, b) => a - b)
+    : [];
+  const colorMaxTha = Math.max(percentileSorted(sortedNonZeroTha, 0.95), 1);
+
   // Tamanho de célula em metros — usado só pro espalhamento horizontal
   // orgânico dos pontos (ver abaixo), não muda a projeção lat/lng → metros.
   const cellWidthM = widthM / Math.max(cols - 1, 1);
   const cellDepthM = depthM / Math.max(rows - 1, 1);
+  // Mesmo raio pro dossel e pro solo — ver comentário original mais abaixo
+  // (dissolve o alinhamento em grade que fazia a nuvem parecer quadriculada).
+  const jitterRadiusCells = 1.4;
 
   // ── Geometria: uma coluna de pontos empilhados por célula da grade ────────
   // Célula sem canopy real (cm<=0) ganha 1 ponto raso no nível do solo — é o
@@ -148,50 +182,94 @@ export function createPointCloudScene(
         positions.push(x, 0, z);
         const color = heatColor(0);
         colors.push(color.r, color.g, color.b);
-        continue;
+      } else {
+        const pointCount = Math.min(
+          MAX_POINTS_PER_COLUMN,
+          Math.max(
+            MIN_POINTS_PER_COLUMN,
+            Math.round(
+              MIN_POINTS_PER_COLUMN +
+                (cm / Math.max(maxCm, 1)) * (MAX_POINTS_PER_COLUMN - MIN_POINTS_PER_COLUMN),
+            ),
+          ),
+        );
+
+        // Raio do espalhamento em CÍRCULO (não quadrado) e em unidade de
+        // célula (não metros). Precisa passar bem além da própria célula (>1,
+        // não só até a borda): com raio 0,5 o círculo de cada célula ficava
+        // inscrito exatamente nela, então célula vizinha nunca se misturava —
+        // o conjunto de "tufos" isolados, um por célula, alinhados na grade,
+        // é o que lia como quadriculado. Com raio maior os círculos de
+        // células vizinhas se sobrepõem bastante, dissolvendo o alinhamento
+        // em grade numa massa contínua e irregular (bilinearSample garante
+        // que o valor amostrado longe da célula original ainda faça sentido).
+        for (let p = 0; p < pointCount; p++) {
+          const angle = Math.random() * Math.PI * 2;
+          const radiusCells = Math.sqrt(Math.random()) * jitterRadiusCells;
+          const jitterCol = Math.cos(angle) * radiusCells;
+          const jitterRow = Math.sin(angle) * radiusCells;
+
+          const sampledCm = bilinearSample(heightCm, cols, rows, col + jitterCol, row + jitterRow);
+          const sampledHeightSceneM = (Math.max(sampledCm, 0) / 100) * verticalScale;
+          const y = (p / (pointCount - 1)) * sampledHeightSceneM;
+          positions.push(x + jitterCol * cellWidthM, y, z + jitterRow * cellDepthM);
+
+          // Cor pela altura REAL do próprio ponto (Z), igual a um viewer
+          // LiDAR de verdade (legenda "Coord. Z"): gradiente azul→verde→
+          // amarelo→vermelho conforme a altura sobre o solo. Normalizado
+          // pelo percentil 95 (colorMaxSceneM), não pelo máximo bruto — ver
+          // comentário acima.
+          const t = colorMaxSceneM > 0 ? y / colorMaxSceneM : 0;
+          const color = heatColor(t);
+          colors.push(color.r, color.g, color.b);
+        }
       }
 
-      const pointCount = Math.min(
-        MAX_POINTS_PER_COLUMN,
-        Math.max(
-          MIN_POINTS_PER_COLUMN,
-          Math.round(
-            MIN_POINTS_PER_COLUMN +
-              (cm / Math.max(maxCm, 1)) * (MAX_POINTS_PER_COLUMN - MIN_POINTS_PER_COLUMN),
-          ),
-        ),
-      );
+      // Pool do solo: coluna independente pra BAIXO (y negativo) — existe
+      // sempre que o dado de carbono do solo cobrir essa célula, com ou sem
+      // canopy mapeado ali em cima (são dois datasets diferentes).
+      if (socAligned) {
+        const tha = socAligned.socTha[cellIndex];
+        if (tha > 0) {
+          const soilPointCount = Math.min(
+            MAX_POINTS_PER_SOIL_COLUMN,
+            Math.max(
+              MIN_POINTS_PER_SOIL_COLUMN,
+              Math.round(
+                MIN_POINTS_PER_SOIL_COLUMN +
+                  (tha / maxSocTha) * (MAX_POINTS_PER_SOIL_COLUMN - MIN_POINTS_PER_SOIL_COLUMN),
+              ),
+            ),
+          );
 
-      // Raio do espalhamento em CÍRCULO (não quadrado) e em unidade de
-      // célula (não metros). Precisa passar bem além da própria célula (>1,
-      // não só até a borda): com raio 0,5 o círculo de cada célula ficava
-      // inscrito exatamente nela, então célula vizinha nunca se misturava —
-      // o conjunto de "tufos" isolados, um por célula, alinhados na grade,
-      // é o que lia como quadriculado. Com raio maior os círculos de células
-      // vizinhas se sobrepõem bastante, dissolvendo o alinhamento em grade
-      // numa massa contínua e irregular (bilinearHeightCm garante que a
-      // altura amostrada longe da célula original ainda faça sentido).
-      const jitterRadiusCells = 1.4;
+          for (let p = 0; p < soilPointCount; p++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radiusCells = Math.sqrt(Math.random()) * jitterRadiusCells;
+            const jitterCol = Math.cos(angle) * radiusCells;
+            const jitterRow = Math.sin(angle) * radiusCells;
 
-      for (let p = 0; p < pointCount; p++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radiusCells = Math.sqrt(Math.random()) * jitterRadiusCells;
-        const jitterCol = Math.cos(angle) * radiusCells;
-        const jitterRow = Math.sin(angle) * radiusCells;
+            const sampledTha = bilinearSample(
+              socAligned.socTha,
+              cols,
+              rows,
+              col + jitterCol,
+              row + jitterRow,
+            );
+            const sampledDepthSceneM = Math.max(sampledTha, 0) * soilVerticalScale;
+            const y = -(p / (soilPointCount - 1)) * sampledDepthSceneM;
+            positions.push(x + jitterCol * cellWidthM, y, z + jitterRow * cellDepthM);
 
-        const sampledCm = bilinearHeightCm(heightCm, cols, rows, col + jitterCol, row + jitterRow);
-        const sampledHeightSceneM = (Math.max(sampledCm, 0) / 100) * verticalScale;
-        const y = (p / (pointCount - 1)) * sampledHeightSceneM;
-        positions.push(x + jitterCol * cellWidthM, y, z + jitterRow * cellDepthM);
-
-        // Cor pela altura REAL do próprio ponto (Z), igual a um viewer LiDAR
-        // de verdade (legenda "Coord. Z"): gradiente azul→verde→amarelo→
-        // vermelho conforme a altura sobre o solo. Normalizado pelo
-        // percentil 95 (colorMaxSceneM), não pelo máximo bruto — ver
-        // comentário acima.
-        const t = colorMaxSceneM > 0 ? y / colorMaxSceneM : 0;
-        const color = heatColor(t);
-        colors.push(color.r, color.g, color.b);
+            // Cor pelo carbono do próprio ponto (não pela profundidade): o
+            // dado é um TOTAL 0-100cm, não um perfil por profundidade — não
+            // temos como saber a distribuição real dentro da coluna, então
+            // colorir por "profundidade" seria inventar um dado que não
+            // existe. A cor representa quantidade de carbono, a posição
+            // (extensão pra baixo) também — os dois crescem juntos.
+            const soilT = colorMaxTha > 0 ? sampledTha / colorMaxTha : 0;
+            const color = soilColor(soilT);
+            colors.push(color.r, color.g, color.b);
+          }
+        }
       }
     }
   }
@@ -226,10 +304,17 @@ export function createPointCloudScene(
   container.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0, (maxHeightM * verticalScale) / 4, 0);
+  // Com solo, centraliza a órbita no nível do chão (y=0) — os dois pools
+  // ficam visíveis de forma equilibrada. Sem solo, mantém o comportamento
+  // de antes (um pouco acima do chão, voltado pro dossel).
+  controls.target.set(0, socAligned ? 0 : (maxHeightM * verticalScale) / 4, 0);
   controls.minDistance = horizontalExtentM * 0.1;
   controls.maxDistance = horizontalExtentM * 3;
-  controls.maxPolarAngle = Math.PI * 0.49; // não deixa a câmera ir pra baixo do "chão"
+  // Com solo, deixa a câmera orbitar mais perto do horizonte (mais próximo
+  // de 0.5π) pra dar pra "olhar embaixo" do chão e ver o pool de carbono do
+  // solo — sem solo, mantém a trava mais alta de antes (câmera sempre
+  // razoavelmente acima do chão).
+  controls.maxPolarAngle = socAligned ? Math.PI * 0.499 : Math.PI * 0.49;
   controls.enableDamping = !options.reduceMotion;
   controls.dampingFactor = 0.08;
   controls.update();
