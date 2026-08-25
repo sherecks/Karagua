@@ -372,6 +372,19 @@ class KaraguaLeafletMap extends HTMLElement {
         .history-chart rect:hover { opacity: 0.75; }
         .history-loading { font-size: 12px; color: #6B7B8D; padding: 8px 0; }
         .history-error { font-size: 12px; color: #b23b3b; padding: 8px 0; }
+        .loss-period { margin: 0 0 10px; }
+        .loss-period:last-child { margin-bottom: 0; }
+        .loss-period-years { font-size: 12px; font-weight: 600; color: #2C3E50; }
+        .loss-period-net {
+          font-size: 15px;
+          font-weight: 700;
+          font-variant-numeric: tabular-nums;
+          margin: 2px 0;
+        }
+        .loss-period-net.negative { color: #b23b3b; }
+        .loss-period-net.positive { color: #4E8748; }
+        .loss-period-detail { font-size: 11px; color: #6B7B8D; }
+        .loss-period-source { font-size: 10px; color: #A8A296; margin-top: 2px; }
         #map.area-select-mode { cursor: crosshair; }
         #points-section { margin-top: 0; }
         .points-group-label {
@@ -562,6 +575,9 @@ class KaraguaLeafletMap extends HTMLElement {
             <div id="history-chart-wrap"></div>
             <button type="button" id="history-refresh-btn" class="layer-button">Recalcular</button>
             <span class="layer-credit" id="history-credit"></span>
+            <div class="panel-divider"></div>
+            <p class="history-hint">Perda e ganho de manguezal entre 1996 e 2025, sempre pelo mesmo satélite/resolução.</p>
+            <div id="loss-wrap"></div>
           </div>
         </div>
         <div class="panel-divider"></div>
@@ -1455,11 +1471,15 @@ class KaraguaLeafletMap extends HTMLElement {
       header.addEventListener("click", () => {
         if (!section.classList.contains("collapsed") && !this._historyLoaded) {
           void this._loadHistory();
+          void this._loadLoss();
         }
       });
     }
     if (refreshBtn) {
-      refreshBtn.addEventListener("click", () => void this._loadHistory());
+      refreshBtn.addEventListener("click", () => {
+        void this._loadHistory();
+        void this._loadLoss();
+      });
     }
   }
 
@@ -1469,7 +1489,7 @@ class KaraguaLeafletMap extends HTMLElement {
     const credit = this.shadowRoot.getElementById("history-credit");
     if (!apiUrl || !wrap) return;
     this._historyLoaded = true;
-    wrap.innerHTML = `<div class="history-loading">Calculando área por ano (1996-2020)...</div>`;
+    wrap.innerHTML = `<div class="history-loading">Calculando área por ano (1996-2025)...</div>`;
 
     // Sem bbox: o back-end sempre calcula pro município inteiro (limite
     // oficial do IBGE), não pra área visível do mapa — ver o comentário de
@@ -1481,15 +1501,54 @@ class KaraguaLeafletMap extends HTMLElement {
       wrap.innerHTML = KaraguaLeafletMap._renderHistoryChart(body.data.years);
       if (credit) {
         credit.textContent =
-          "Global Mangrove Watch v3 (1996-2019, 25m) + v4 (2020, 10m) · limite oficial do município (IBGE)";
+          "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m · limite oficial do município (IBGE)";
       }
     } catch (e) {
       wrap.innerHTML = `<div class="history-error">Histórico indisponível: ${e.message}</div>`;
     }
   }
 
+  // Perda/ganho: diferença pixel a pixel entre 1996 e 2025, os dois extremos
+  // do GMW v4.1 Timeseries (mesmo produto/sensor o tempo todo — por isso é
+  // uma comparação só, não mais duas por fonte diferente; ver comentário de
+  // GMW_FULL_HISTORY_YEARS na API pra entender a mudança).
+  async _loadLoss() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const wrap = this.shadowRoot.getElementById("loss-wrap");
+    if (!apiUrl || !wrap) return;
+    wrap.innerHTML = `<div class="history-loading">Calculando perda/ganho...</div>`;
+
+    try {
+      const res = await fetch(`${apiUrl.replace(/\/$/, "")}/mangrove-loss`);
+      const body = await res.json();
+      if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+      wrap.innerHTML = KaraguaLeafletMap._renderLossPeriod(body.data);
+    } catch (e) {
+      wrap.innerHTML = `<div class="history-error">Perda/ganho indisponível: ${e.message}</div>`;
+    }
+  }
+
+  static _renderLossPeriod(p) {
+    const net = p.gainHa - p.lossHa;
+    const netClass = net < 0 ? "negative" : "positive";
+    const netLabel =
+      net < 0 ? `${net.toLocaleString("pt-BR")} ha` : `+${net.toLocaleString("pt-BR")} ha`;
+    return `
+      <div class="loss-period">
+        <div class="loss-period-years">${p.fromYear} → ${p.toYear}</div>
+        <div class="loss-period-net ${netClass}">${netLabel} líquido</div>
+        <div class="loss-period-detail">−${p.lossHa.toLocaleString("pt-BR")} ha perdidos · +${p.gainHa.toLocaleString("pt-BR")} ha ganhos</div>
+        <div class="loss-period-source">${p.source}</div>
+      </div>
+    `;
+  }
+
   // Gráfico de barras em SVG puro (sem lib de gráfico) — mesmo espírito dos
-  // ícones do painel inteiro, já todos SVG à mão.
+  // ícones do painel inteiro, já todos SVG à mão. Agora com 30 anos (1996-
+  // 2025, um por ano, tudo do v4.1.12) em vez dos 11 "pulados" de antes —
+  // não dá mais pra rotular toda barra sem virar ilegível, então só marca
+  // 1 a cada 5 anos (e sempre a última) no eixo; o valor de cada ano
+  // continua acessível via title (tooltip ao passar o mouse/toque).
   static _renderHistoryChart(years) {
     if (!years?.length) return `<div class="history-error">Sem dados pra essa área.</div>`;
     const w = 198;
@@ -1497,16 +1556,20 @@ class KaraguaLeafletMap extends HTMLElement {
     const padBottom = 16;
     const padTop = 6;
     const maxHa = Math.max(...years.map((y) => y.areaHa), 1);
-    const barGap = 2;
+    const barGap = years.length > 15 ? 1 : 2;
     const barW = w / years.length;
+    const labelEvery = years.length > 15 ? 5 : 1;
     const bars = years
       .map((y, i) => {
         const barH = Math.max(2, ((h - padBottom - padTop) * y.areaHa) / maxHa);
         const x = i * barW + barGap / 2;
         const barWidth = barW - barGap;
         const yPos = h - padBottom - barH;
-        const label = String(y.year).slice(2);
-        return `<rect x="${x.toFixed(1)}" y="${yPos.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" fill="#4E8748" rx="1"><title>${y.year}: ${y.areaHa.toLocaleString("pt-BR")} ha</title></rect><text x="${(x + barWidth / 2).toFixed(1)}" y="${h - 4}" font-size="8" text-anchor="middle" fill="#6B7B8D">'${label}</text>`;
+        const showLabel = i % labelEvery === 0 || i === years.length - 1;
+        const label = showLabel
+          ? `<text x="${(x + barWidth / 2).toFixed(1)}" y="${h - 4}" font-size="8" text-anchor="middle" fill="#6B7B8D">${String(y.year).slice(2)}</text>`
+          : "";
+        return `<rect x="${x.toFixed(1)}" y="${yPos.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" fill="#4E8748" rx="1"><title>${y.year}: ${y.areaHa.toLocaleString("pt-BR")} ha</title></rect>${label}`;
       })
       .join("");
     return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" class="history-chart">${bars}</svg>`;

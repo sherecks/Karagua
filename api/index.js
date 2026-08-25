@@ -9,6 +9,8 @@ const { NetCDFReader } = require("netcdfjs");
 const { fromArrayBuffer: geotiffFromArrayBuffer, fromUrl: geotiffFromUrl } = require("geotiff");
 const unzipper = require("unzipper");
 const { Readable, PassThrough } = require("stream");
+const fs = require("fs");
+const path = require("path");
 
 const {
   DATABASE_URL,
@@ -846,12 +848,11 @@ function getGmwTileGrid(year, name) {
   return promise;
 }
 
-// Máscara + área (ha) de manguezal num bbox, pra um ano — usado tanto pela
-// camada visual (grade fina, 1 ano) quanto pelo histórico (grade grosseira,
-// 11 anos de uma vez). `polygons`, quando passado, exclui da área (não do
-// desenho da máscara) as células fora da fronteira municipal — ver
-// getMunicipioPolygon acima.
-async function computeGmwExtent(west, south, east, north, cols, rows, year, polygons = null) {
+// Só a máscara (0/1) de manguezal num bbox, pra um ano do v3/v4 (1996-2020,
+// tiles remotas via zip) — separado de computeGmwExtent abaixo pra poder
+// reusar a mesma grade em outro cálculo (perda 1996→2019, ver
+// computeGmwLoss) sem duplicar o loop de amostragem.
+async function computeGmwMask(west, south, east, north, cols, rows, year) {
   const tileNames = integerTilesForBbox(west, south, east, north).map((t) =>
     gmwTileNameForYear(year, t),
   );
@@ -860,12 +861,10 @@ async function computeGmwExtent(west, south, east, north, cols, rows, year, poly
   );
 
   const mangrove = new Array(cols * rows).fill(0);
-  const withinMunicipio = polygons ? new Array(cols * rows).fill(false) : null;
   for (let row = 0; row < rows; row++) {
     const lat = north - (row / (rows - 1)) * (north - south);
     for (let col = 0; col < cols; col++) {
       const lon = west + (col / (cols - 1)) * (east - west);
-      if (withinMunicipio) withinMunicipio[row * cols + col] = pointInPolygons(lon, lat, polygons);
       for (const t of tiles) {
         const [tw, ts, te, tn] = t.bbox;
         if (lon < tw || lon > te || lat < ts || lat > tn) continue;
@@ -882,20 +881,244 @@ async function computeGmwExtent(west, south, east, north, cols, rows, year, poly
       }
     }
   }
+  return mangrove;
+}
 
+function cellAreaHaFor(west, south, east, north, cols, rows) {
   const centerLat = (south + north) / 2;
   const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
   const cellAreaM2 =
     ((east - west) / cols) *
     metersPerDegreeLng *
     (((north - south) / rows) * METERS_PER_DEGREE_LAT);
+  return cellAreaM2 / 10_000;
+}
+
+// Máscara + área (ha) de manguezal num bbox, pra um ano — usado tanto pela
+// camada visual (grade fina, 1 ano) quanto pelo histórico (grade grosseira,
+// 11 anos de uma vez). `polygons`, quando passado, exclui da área (não do
+// desenho da máscara) as células fora da fronteira municipal — ver
+// getMunicipioPolygon acima.
+async function computeGmwExtent(west, south, east, north, cols, rows, year, polygons = null) {
+  const mangrove = await computeGmwMask(west, south, east, north, cols, rows, year);
+  const withinMunicipio = polygons
+    ? mangrove.map((_, i) => {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const lat = north - (row / (rows - 1)) * (north - south);
+        const lon = west + (col / (cols - 1)) * (east - west);
+        return pointInPolygons(lon, lat, polygons);
+      })
+    : null;
+
+  const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
   const mangroveCells = withinMunicipio
     ? mangrove.reduce((s, v, i) => s + (v && withinMunicipio[i] ? 1 : 0), 0)
     : mangrove.reduce((s, v) => s + v, 0);
-  const areaHa = Math.round((mangroveCells * cellAreaM2) / 10_000);
+  const areaHa = Math.round(mangroveCells * cellAreaHa);
 
   return { mangrove, areaHa };
 }
+
+// ── Extensão "recente" (GMW v4.1 Timeseries, 2020-2025) ────────────────────
+// O v3 acima só vai até 2020, e o v4 "oficial" (2020, GMW_YEAR) é só 1 ano —
+// nenhum dos dois serve pra medir perda DEPOIS de 2020. O GMW v4.1 Timeseries
+// (Zenodo 21346457, publicado 2026) resolve isso: 1985-2025 anual, 10m,
+// Sentinel-2/Landsat. Mas o arquivo publicado é 1 tar.gz de ~1,3GB com o
+// mundo inteiro (cada tile é 1 GeoTIFF de 41 bandas, uma por ano) — baixamos
+// esse arquivo 1x, extraímos só as 2 tiles que cobrem Balneário Barra do Sul
+// (~3,8MB) e commitamos esse recorte em api/data/gmw-v4112/. A API nunca
+// busca o arquivo de 1,3GB — só lê esses arquivos locais já recortados.
+const GMW_RECENT_TILE_DIR = path.join(__dirname, "data", "gmw-v4112");
+const GMW_RECENT_YEAR_START = 1985;
+const GMW_RECENT_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
+
+function gmwRecentTilePath(tile) {
+  const core = formatTileCore(tile, { northBased: true });
+  return path.join(GMW_RECENT_TILE_DIR, `GMW_${core}_v4112_mng_ext.tif`);
+}
+
+const gmwRecentImageCache = new Map(); // caminho do arquivo -> Promise<{ image, bbox, width, height } | null>
+function getGmwRecentImage(filePath) {
+  if (gmwRecentImageCache.has(filePath)) return gmwRecentImageCache.get(filePath);
+  const promise = (async () => {
+    if (!fs.existsSync(filePath)) return null; // tile fora do recorte local (não cobre o município)
+    const buf = fs.readFileSync(filePath);
+    const tiff = await geotiffFromArrayBuffer(
+      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    );
+    const image = await tiff.getImage(0);
+    return {
+      image,
+      bbox: image.getBoundingBox(),
+      width: image.getWidth(),
+      height: image.getHeight(),
+    };
+  })();
+  gmwRecentImageCache.set(filePath, promise);
+  promise.catch(() => gmwRecentImageCache.delete(filePath));
+  return promise;
+}
+
+// Mesma técnica de leitura em janela do TanDEM-X/SOC, mas amostragem NEAREST
+// (não bilinear): é uma máscara binária (é/não é manguezal), interpolar
+// criaria valores fracionários sem sentido físico. `samples: [bandIndex]`
+// pega só a banda do ano pedido dentro do GeoTIFF de 41 bandas (uma por ano,
+// 1985 = banda 0).
+async function computeGmwMaskRecent(west, south, east, north, cols, rows, year) {
+  const bandIndex = year - GMW_RECENT_YEAR_START;
+  const tilePaths = integerTilesForBbox(west, south, east, north).map(gmwRecentTilePath);
+  const tiles = (await Promise.all(tilePaths.map(getGmwRecentImage))).filter(Boolean);
+
+  const mangrove = new Array(cols * rows).fill(0);
+  for (const tile of tiles) {
+    const [tw, ts, te, tn] = tile.bbox;
+    const clipWest = Math.max(west, tw);
+    const clipEast = Math.min(east, te);
+    const clipSouth = Math.max(south, ts);
+    const clipNorth = Math.min(north, tn);
+    if (clipWest >= clipEast || clipSouth >= clipNorth) continue;
+
+    const colStart = Math.max(0, Math.ceil(((clipWest - west) / (east - west)) * (cols - 1)));
+    const colEnd = Math.min(cols - 1, Math.floor(((clipEast - west) / (east - west)) * (cols - 1)));
+    const rowStart = Math.max(0, Math.ceil(((north - clipNorth) / (north - south)) * (rows - 1)));
+    const rowEnd = Math.min(
+      rows - 1,
+      Math.floor(((north - clipSouth) / (north - south)) * (rows - 1)),
+    );
+    if (colEnd < colStart || rowEnd < rowStart) continue;
+    const subCols = colEnd - colStart + 1;
+    const subRows = rowEnd - rowStart + 1;
+
+    const subWest = west + (colStart / (cols - 1)) * (east - west);
+    const subEast = west + (colEnd / (cols - 1)) * (east - west);
+    const subNorth = north - (rowStart / (rows - 1)) * (north - south);
+    const subSouth = north - (rowEnd / (rows - 1)) * (north - south);
+
+    const xMin = Math.max(0, Math.floor(((subWest - tw) / (te - tw)) * tile.width));
+    const xMax = Math.min(tile.width, Math.ceil(((subEast - tw) / (te - tw)) * tile.width));
+    const yMin = Math.max(0, Math.floor(((tn - subNorth) / (tn - ts)) * tile.height));
+    const yMax = Math.min(tile.height, Math.ceil(((tn - subSouth) / (tn - ts)) * tile.height));
+    if (xMax <= xMin || yMax <= yMin) continue;
+
+    const [grid] = await tile.image.readRasters({
+      window: [xMin, yMin, xMax, yMax],
+      width: subCols,
+      height: subRows,
+      resampleMethod: "nearest",
+      samples: [bandIndex],
+    });
+    for (let r = 0; r < subRows; r++) {
+      for (let c = 0; c < subCols; c++) {
+        if (grid[r * subCols + c] > 0) mangrove[(rowStart + r) * cols + (colStart + c)] = 1;
+      }
+    }
+  }
+  return mangrove;
+}
+
+// Todo o histórico (chart e perda) usa SÓ o v4.1.12 agora — inclusive pra
+// 1996-2019, que antes vinha do v3. Motivo: descobrimos que o v4.1.12 já
+// cobre 1985-2025 inteiro com UMA metodologia contínua (suavização Bayesiana
+// + cadeia de Markov sobre todos os sensores — JAXA SAR, Landsat, Sentinel-2
+// — combinados na hora de treinar, não depois). Comparar v3 (25m) com
+// v4.1.12 (10m) media o efeito de trocar de sensor junto com a mudança real
+// (resolução melhor enxerga manguezal fino que o produto antigo nunca via) —
+// testamos ao vivo: 1996-2019-2020-2025 tudo pelo v4.1.12 dá uma transição
+// suave em 2019→2020 (376→377 ha), sem o degrau que aparecia misturando v3
+// com v4. O v3 continua sendo usado só na camada visual do mapa (seletor de
+// ano em "Concentração de manguezal"), que mostra 1 ano por vez — não soma
+// nem compara dois anos, então a troca de sensor não distorce nada ali.
+const GMW_FULL_HISTORY_YEARS = Array.from({ length: 2025 - 1996 + 1 }, (_, i) => 1996 + i);
+
+async function computeGmwExtentRecent(west, south, east, north, cols, rows, year, polygons) {
+  const mangrove = await computeGmwMaskRecent(west, south, east, north, cols, rows, year);
+  const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
+  let mangroveCells = 0;
+  for (let row = 0; row < rows; row++) {
+    const lat = north - (row / (rows - 1)) * (north - south);
+    for (let col = 0; col < cols; col++) {
+      const lon = west + (col / (cols - 1)) * (east - west);
+      if (mangrove[row * cols + col] && pointInPolygons(lon, lat, polygons)) mangroveCells++;
+    }
+  }
+  return { mangrove, areaHa: Math.round(mangroveCells * cellAreaHa) };
+}
+
+// ── Perda de manguezal (diferença entre dois anos) ─────────────────────────
+// Compara a máscara de dois anos pixel a pixel: era manguezal e deixou de
+// ser = perda; não era e passou a ser = ganho. Uma comparação só, 1996→2025,
+// os dois extremos disponíveis no v4.1.12 — ver comentário de
+// GMW_FULL_HISTORY_YEARS acima pra por que não precisa mais dividir em dois
+// períodos por fonte diferente.
+async function computeGmwLossPeriod(municipio, fromYear, toYear) {
+  const [west, south, east, north] = municipio.bbox;
+  const cols = GMW_HISTORY_GRID;
+  const rows = GMW_HISTORY_GRID;
+  const [fromMask, toMask] = await Promise.all([
+    computeGmwMaskRecent(west, south, east, north, cols, rows, fromYear),
+    computeGmwMaskRecent(west, south, east, north, cols, rows, toYear),
+  ]);
+  const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
+
+  let lossCells = 0;
+  let gainCells = 0;
+  let stableCells = 0;
+  for (let row = 0; row < rows; row++) {
+    const lat = north - (row / (rows - 1)) * (north - south);
+    for (let col = 0; col < cols; col++) {
+      const lon = west + (col / (cols - 1)) * (east - west);
+      if (!pointInPolygons(lon, lat, municipio.polygons)) continue;
+      const i = row * cols + col;
+      const was = fromMask[i] > 0;
+      const is = toMask[i] > 0;
+      if (was && !is) lossCells++;
+      else if (!was && is) gainCells++;
+      else if (was && is) stableCells++;
+    }
+  }
+  return {
+    fromYear,
+    toYear,
+    lossHa: Math.round(lossCells * cellAreaHa),
+    gainHa: Math.round(gainCells * cellAreaHa),
+    stableHa: Math.round(stableCells * cellAreaHa),
+    source: "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m",
+  };
+}
+
+const GMW_LOSS_TTL_MS = 6 * 60 * 60 * 1000;
+let gmwLossPromise = null;
+let gmwLossAt = 0;
+
+// Sem parâmetros de bbox, igual ao /mangrove-extent-history: sempre o
+// município inteiro (limite oficial do IBGE), nunca a área visível do mapa.
+app.get("/mangrove-loss", async (_req, res) => {
+  if (gmwLossPromise && Date.now() - gmwLossAt < GMW_LOSS_TTL_MS) {
+    try {
+      return res.set("Cache-Control", "public, max-age=3600").json({ data: await gmwLossPromise });
+    } catch {
+      // cache inválido (a promise rejeitou) — recalcula abaixo
+    }
+  }
+
+  gmwLossAt = Date.now();
+  gmwLossPromise = (async () => {
+    const municipio = await getMunicipioPolygon();
+    const period = await computeGmwLossPeriod(municipio, 1996, 2025);
+    return { municipio: "Balneário Barra do Sul", ...period };
+  })();
+  gmwLossPromise.catch(() => {
+    gmwLossPromise = null;
+  });
+
+  try {
+    const data = await gmwLossPromise;
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
 
 app.get("/mangrove-extent-gmw", async (req, res) => {
   const west = Number(req.query.west);
@@ -947,8 +1170,8 @@ app.get("/mangrove-extent-history", async (_req, res) => {
     const municipio = await getMunicipioPolygon();
     const [west, south, east, north] = municipio.bbox;
     const years = await Promise.all(
-      GMW_HISTORY_YEARS.map(async (year) => {
-        const { areaHa } = await computeGmwExtent(
+      GMW_FULL_HISTORY_YEARS.map(async (year) => {
+        const { areaHa } = await computeGmwExtentRecent(
           west,
           south,
           east,
