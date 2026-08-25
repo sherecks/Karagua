@@ -19,7 +19,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._windActive = false;
     this._gmwExtentLayer = null;
     this._gmwExtentActive = false;
-    this._gmwExtentYear = 2020;
+    this._gmwExtentYear = 2025;
     this._gmwYearDebounce = 0;
     this._historyLoaded = false;
     this._gmwExtentRequestId = 0;
@@ -275,11 +275,11 @@ class KaraguaLeafletMap extends HTMLElement {
         .gmw-heat-tint {
           filter: blur(3px) url(#concentration-heat);
         }
-        /* Carbono orgânico do solo: preto e branco (sem o filtro de cor
-           #concentration-heat do GMW acima) — diferencia visualmente as duas
-           camadas de calor quando ligadas junto (a mesma paleta azul→
-           vermelho nas duas confundiria qual camada é qual). Mesmo raio de
-           blur do GMW (3px), só sem a conversão de cor por cima. */
+        /* Carbono orgânico do solo: azul (cor já vem pronta do canvas em
+           _refreshSoc, não é filtro CSS como o #concentration-heat do GMW)
+           — diferencia visualmente as duas camadas de calor quando ligadas
+           junto (a paleta azul→vermelho do GMW confundiria qual é qual).
+           Mesmo raio de blur do GMW (3px), só sem a conversão de matiz. */
         .soc-tint {
           filter: blur(3px);
         }
@@ -541,21 +541,21 @@ class KaraguaLeafletMap extends HTMLElement {
             <div class="gmw-year-row" id="gmw-year-row">
               <div class="gmw-year-row-top">
                 <span class="gmw-year-label">Ano</span>
-                <span class="gmw-year-value" id="gmw-year-value">2020</span>
+                <span class="gmw-year-value" id="gmw-year-value">2025</span>
               </div>
               <input
                 type="range"
                 id="gmw-year-slider"
                 class="gmw-year-slider"
                 min="0"
-                max="10"
+                max="29"
                 step="1"
-                value="10"
+                value="29"
                 aria-label="Ano da camada de manguezal"
               >
-              <div class="gmw-year-ticks"><span>1996</span><span>2020</span></div>
+              <div class="gmw-year-ticks"><span>1996</span><span>2025</span></div>
             </div>
-            <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4 · Sentinel-2, 10m</span>
+            <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m</span>
             <label class="layer-toggle">
               <input type="checkbox" id="soc-toggle">
               <span>Carbono orgânico do solo</span>
@@ -974,11 +974,12 @@ class KaraguaLeafletMap extends HTMLElement {
     toggle.addEventListener("change", () => void this._setWindVisible(toggle.checked));
   }
 
-  // Mapa em P&B enquanto vento OU concentração de manguezal estiverem
-  // ativos (qualquer um já justifica o contraste); só volta a cor quando
-  // os dois desligarem.
+  // Mapa em P&B enquanto vento, concentração de manguezal OU carbono do
+  // solo estiverem ativos (qualquer um já justifica o contraste — no caso
+  // do carbono, também faz o azul do tile se destacar do fundo); só volta
+  // a cor quando os três desligarem.
   _updateBaseFilter() {
-    const active = this._windActive || this._gmwExtentActive;
+    const active = this._windActive || this._gmwExtentActive || this._socActive;
     this._map.getPane("tilePane").style.filter = active ? "grayscale(1) contrast(0.95)" : "";
   }
 
@@ -1209,19 +1210,18 @@ class KaraguaLeafletMap extends HTMLElement {
     return group;
   }
 
-  // ── Mapa de calor de concentração de manguezal (Global Mangrove Watch v4) ─
-  // Sentinel-2 a 10m, remapeado especificamente pra capturar franja e
-  // manguezal ripário em canais estreitos. Passa pela nossa API (decodifica
-  // o GeoTIFF categórico no servidor) e o resultado (máscara binária: é/não é
+  // ── Mapa de calor de concentração de manguezal (Global Mangrove Watch v4.1
+  // Timeseries) ────────────────────────────────────────────────────────────
+  // Sentinel-2/Landsat a 10m. Passa pela nossa API (decodifica o GeoTIFF
+  // categórico no servidor) e o resultado (máscara binária: é/não é
   // manguezal) vira densidade local por vizinhança (_gmwDensity) pintada em
   // canvas aqui no cliente — o filtro #concentration-heat (.gmw-heat-tint)
   // então converte essa densidade num gradiente de calor de verdade, não um
   // preenchimento sólido de uma cor só.
-  // Anos com dado real disponível (mesma lista do back-end,
-  // GMW_HISTORY_YEARS em api/index.js) — o slider anda por ÍNDICE nessa
-  // lista, não pelo ano em si, porque os anos não são igualmente espaçados
-  // (pula de 2010 pra 2015, por exemplo).
-  static _GMW_YEARS = [1996, 2007, 2008, 2009, 2010, 2015, 2016, 2017, 2018, 2019, 2020];
+  // Todo ano de 1996 a 2025 tem dado real (mesma faixa do back-end,
+  // GMW_FULL_HISTORY_YEARS em api/index.js) — o v4.1.12 é anual, sem os
+  // buracos que o v3 antigo tinha. O slider anda por ÍNDICE nessa lista.
+  static _GMW_YEARS = Array.from({ length: 2025 - 1996 + 1 }, (_, i) => 1996 + i);
 
   _initGmwExtentToggle() {
     const toggle = this.shadowRoot.getElementById("gmw-extent-toggle");
@@ -1233,7 +1233,7 @@ class KaraguaLeafletMap extends HTMLElement {
       if (yearRow) yearRow.hidden = !toggle.checked;
       void this._setGmwExtentVisible(toggle.checked);
     });
-    // Barra de arrastar: anda por índice (0-10) na lista de anos disponíveis
+    // Barra de arrastar: anda por índice (0-29) na lista de anos disponíveis
     // acima. "input" dispara continuamente enquanto arrasta (não só ao
     // soltar) — o número do ano atualiza na hora, e o fetch/redesenho do
     // overlay é debounced (250ms sem mexer) pra não disparar um request por
@@ -1344,14 +1344,7 @@ class KaraguaLeafletMap extends HTMLElement {
 
     const credit = this.shadowRoot.getElementById("gmw-extent-credit");
     if (credit) {
-      // 2020 usa o produto v4 (Sentinel-2, 10m); os outros anos vêm do v3
-      // (JAXA/Landsat, 25m) — resolução mais baixa, então a mancha de anos
-      // anteriores a 2020 é menos detalhada, não necessariamente "menor de
-      // verdade".
-      const source =
-        data.year === 2020
-          ? "Global Mangrove Watch v4 · Sentinel-2, 10m"
-          : "Global Mangrove Watch v3 · JAXA/Landsat, 25m";
+      const source = "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m";
       credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · ${source} (${data.year})`;
     }
   }
@@ -1380,9 +1373,11 @@ class KaraguaLeafletMap extends HTMLElement {
         this._map.removeLayer(this._socLayer);
         this._socLayer = null;
       }
+      this._updateBaseFilter();
       return;
     }
     this._map.on("moveend zoomend", this._refreshSoc, this);
+    this._updateBaseFilter();
     await this._refreshSoc();
   }
 
@@ -1413,6 +1408,11 @@ class KaraguaLeafletMap extends HTMLElement {
     if (requestId !== this._socRequestId) return;
 
     const colorMax = KaraguaLeafletMap._SOC_COLOR_MAX_THA;
+    // Azul claro (pouco carbono) → azul escuro/saturado (muito carbono) —
+    // mesma lógica de intensidade `t` que antes virava cinza, agora
+    // interpolada entre duas cores fixas em vez de R=G=B.
+    const socLow = [199, 224, 255];
+    const socHigh = [13, 42, 110];
     const canvas = document.createElement("canvas");
     canvas.width = data.cols;
     canvas.height = data.rows;
@@ -1423,10 +1423,9 @@ class KaraguaLeafletMap extends HTMLElement {
       if (tha <= 0) continue;
       const t = Math.min(1, tha / colorMax);
       const o = i * 4;
-      const gray = Math.round(t * 255);
-      img.data[o] = gray;
-      img.data[o + 1] = gray;
-      img.data[o + 2] = gray;
+      img.data[o] = Math.round(socLow[0] + (socHigh[0] - socLow[0]) * t);
+      img.data[o + 1] = Math.round(socLow[1] + (socHigh[1] - socLow[1]) * t);
+      img.data[o + 2] = Math.round(socLow[2] + (socHigh[2] - socLow[2]) * t);
       img.data[o + 3] = Math.min(255, Math.round(40 + t * 215));
     }
     ctx.putImageData(img, 0, 0);

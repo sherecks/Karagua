@@ -7,8 +7,6 @@ const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { NetCDFReader } = require("netcdfjs");
 const { fromArrayBuffer: geotiffFromArrayBuffer, fromUrl: geotiffFromUrl } = require("geotiff");
-const unzipper = require("unzipper");
-const { Readable, PassThrough } = require("stream");
 const fs = require("fs");
 const path = require("path");
 
@@ -682,86 +680,6 @@ app.get("/mangrove-soc", async (req, res) => {
 
 const METERS_PER_DEGREE_LAT = 111_320;
 
-// ── Extensão real do manguezal (Global Mangrove Watch v4, 2020) ────────────
-// NASA dá altura e ESA dá biomassa geral, mas nenhum dos dois responde "aqui
-// É manguezal ou não" — é exatamente o que essa camada responde. Sentinel-2 a
-// 10m, remapeado especificamente para capturar manguezal de franja e
-// ripário em canais estreitos, como o Linguado.
-// Sem chave, sem login (CC BY 4.0, Zenodo) — mas o arquivo publicado é 1
-// único ZIP de ~180MB com o mundo inteiro, não um serviço de recorte como os
-// outros. Truque: o ZIP na verdade contém 1647 tiles de 1°×1° já separados
-// (~500KB-2MB cada); lendo só o índice central do ZIP via HTTP Range (nunca
-// baixando o arquivo inteiro) a gente acha e busca só a tile da nossa área.
-const GMW_ZIP_URL =
-  "https://zenodo.org/api/records/12756047/files/gmw_mng_2020_v4019_gtiff.zip/content";
-const GMW_YEAR = 2020;
-// Resolução fixa do cache em memória por tile (1°×1° → ~55m/px): decodifica
-// 1x (o passo lento, ~10s, é reler+inflar+decodificar o GeoTIFF da tile) e
-// guarda o array bruto — todo request depois só amostra esse array em JS
-// puro (testado: cai de segundos por request pra 1-3ms).
-const GMW_TILE_GRID = 2000;
-
-function gmwUrlSource(url) {
-  return {
-    size: async () => Number((await fetch(url, { method: "HEAD" })).headers.get("content-length")),
-    stream: (offset, length) => {
-      const end = length ? offset + length - 1 : "";
-      const passthrough = new PassThrough();
-      fetch(url, { headers: { range: `bytes=${offset}-${end}` } })
-        .then((res) => Readable.fromWeb(res.body).pipe(passthrough))
-        .catch((e) => passthrough.emit("error", e));
-      return passthrough;
-    },
-  };
-}
-
-let gmwDirectoryPromise = null;
-function getGmwDirectory() {
-  if (!gmwDirectoryPromise) {
-    gmwDirectoryPromise = unzipper.Open.custom(gmwUrlSource(GMW_ZIP_URL));
-    gmwDirectoryPromise.catch(() => {
-      gmwDirectoryPromise = null;
-    });
-  }
-  return gmwDirectoryPromise;
-}
-
-// GMW nomeia pelo canto NOROESTE (northBased: true) — diferente do TanDEM-X
-// acima, que nomeia pelo canto SUDOESTE. Ver o comentário de
-// integerTilesForBbox pra o porquê dessa diferença entre os dois datasets.
-function gmwTileName(tile) {
-  return `GMW_${formatTileCore(tile, { northBased: true })}_v4019_mng.tif`;
-}
-
-// ── Histórico (Global Mangrove Watch v3.0, 1996-2020) ──────────────────────
-// Complementa o v4 acima (só 2020): o v3 publica 11 fotografias anuais da
-// MESMA extensão de manguezal (1996, 2007-2010, 2015-2020), uma abaixo do
-// outro em zips separados no mesmo Zenodo, com a MESMA convenção de tile
-// (canto noroeste) — confirmado testando o zip de 1996 ao vivo antes de
-// integrar. Resolução mais baixa que o v4 (25m JAXA/Landsat vs 10m
-// Sentinel-2): por isso 2020 continua vindo do v4 acima (mais preciso), e o
-// v3 cobre só os anos que o v4 não tem. DOI 10.5281/zenodo.6894273.
-const GMW_V3_YEARS = [1996, 2007, 2008, 2009, 2010, 2015, 2016, 2017, 2018, 2019];
-const GMW_HISTORY_YEARS = [...GMW_V3_YEARS, GMW_YEAR].sort((a, b) => a - b);
-const GMW_V3_ZIP_URL = (year) =>
-  `https://zenodo.org/api/records/6894273/files/gmw_v3_${year}_gtiff.zip/content`;
-
-const gmwV3DirectoryPromises = new Map(); // ano -> Promise<directory>
-function getGmwV3Directory(year) {
-  if (!gmwV3DirectoryPromises.has(year)) {
-    const promise = unzipper.Open.custom(gmwUrlSource(GMW_V3_ZIP_URL(year)));
-    promise.catch(() => gmwV3DirectoryPromises.delete(year));
-    gmwV3DirectoryPromises.set(year, promise);
-  }
-  return gmwV3DirectoryPromises.get(year);
-}
-
-function gmwTileNameForYear(year, tile) {
-  if (year === GMW_YEAR) return gmwTileName(tile);
-  const core = formatTileCore(tile, { northBased: true });
-  return `gmw_v3_${year}/GMW_${core}_${year}_v3.tif`;
-}
-
 // ── Limite oficial do município (IBGE Malhas API) ──────────────────────────
 // O histórico não pode usar a extensão VISÍVEL do mapa como área de
 // referência: dar zoom out ou arrastar o mapa muda o que "conta", e sempre
@@ -823,67 +741,6 @@ function pointInPolygons(lon, lat, polygons) {
   return inside;
 }
 
-const gmwTileGridCache = new Map(); // `${ano}:${nome da tile}` -> Promise<{ grid, bbox } | null>
-function getGmwTileGrid(year, name) {
-  const key = `${year}:${name}`;
-  if (gmwTileGridCache.has(key)) return gmwTileGridCache.get(key);
-  const promise = (async () => {
-    const directory = year === GMW_YEAR ? await getGmwDirectory() : await getGmwV3Directory(year);
-    const entry = directory.files.find((f) => f.path === name);
-    if (!entry) return null; // tile não existe no dataset = sem manguezal ali (é esparso, só existem tiles com dado)
-    const buf = await entry.buffer();
-    const tiff = await geotiffFromArrayBuffer(
-      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-    );
-    const image = await tiff.getImage();
-    const [grid] = await image.readRasters({
-      width: GMW_TILE_GRID,
-      height: GMW_TILE_GRID,
-      resampleMethod: "nearest",
-    });
-    return { grid, bbox: image.getBoundingBox() };
-  })();
-  gmwTileGridCache.set(key, promise);
-  promise.catch(() => gmwTileGridCache.delete(key));
-  return promise;
-}
-
-// Só a máscara (0/1) de manguezal num bbox, pra um ano do v3/v4 (1996-2020,
-// tiles remotas via zip) — separado de computeGmwExtent abaixo pra poder
-// reusar a mesma grade em outro cálculo (perda 1996→2019, ver
-// computeGmwLoss) sem duplicar o loop de amostragem.
-async function computeGmwMask(west, south, east, north, cols, rows, year) {
-  const tileNames = integerTilesForBbox(west, south, east, north).map((t) =>
-    gmwTileNameForYear(year, t),
-  );
-  const tiles = (await Promise.all(tileNames.map((name) => getGmwTileGrid(year, name)))).filter(
-    Boolean,
-  );
-
-  const mangrove = new Array(cols * rows).fill(0);
-  for (let row = 0; row < rows; row++) {
-    const lat = north - (row / (rows - 1)) * (north - south);
-    for (let col = 0; col < cols; col++) {
-      const lon = west + (col / (cols - 1)) * (east - west);
-      for (const t of tiles) {
-        const [tw, ts, te, tn] = t.bbox;
-        if (lon < tw || lon > te || lat < ts || lat > tn) continue;
-        const srcRow = Math.min(
-          GMW_TILE_GRID - 1,
-          Math.max(0, Math.round(((tn - lat) / (tn - ts)) * (GMW_TILE_GRID - 1))),
-        );
-        const srcCol = Math.min(
-          GMW_TILE_GRID - 1,
-          Math.max(0, Math.round(((lon - tw) / (te - tw)) * (GMW_TILE_GRID - 1))),
-        );
-        if (t.grid[srcRow * GMW_TILE_GRID + srcCol]) mangrove[row * cols + col] = 1;
-        break;
-      }
-    }
-  }
-  return mangrove;
-}
-
 function cellAreaHaFor(west, south, east, north, cols, rows) {
   const centerLat = (south + north) / 2;
   const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
@@ -894,44 +751,20 @@ function cellAreaHaFor(west, south, east, north, cols, rows) {
   return cellAreaM2 / 10_000;
 }
 
-// Máscara + área (ha) de manguezal num bbox, pra um ano — usado tanto pela
-// camada visual (grade fina, 1 ano) quanto pelo histórico (grade grosseira,
-// 11 anos de uma vez). `polygons`, quando passado, exclui da área (não do
-// desenho da máscara) as células fora da fronteira municipal — ver
-// getMunicipioPolygon acima.
-async function computeGmwExtent(west, south, east, north, cols, rows, year, polygons = null) {
-  const mangrove = await computeGmwMask(west, south, east, north, cols, rows, year);
-  const withinMunicipio = polygons
-    ? mangrove.map((_, i) => {
-        const row = Math.floor(i / cols);
-        const col = i % cols;
-        const lat = north - (row / (rows - 1)) * (north - south);
-        const lon = west + (col / (cols - 1)) * (east - west);
-        return pointInPolygons(lon, lat, polygons);
-      })
-    : null;
-
-  const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
-  const mangroveCells = withinMunicipio
-    ? mangrove.reduce((s, v, i) => s + (v && withinMunicipio[i] ? 1 : 0), 0)
-    : mangrove.reduce((s, v) => s + v, 0);
-  const areaHa = Math.round(mangroveCells * cellAreaHa);
-
-  return { mangrove, areaHa };
-}
-
-// ── Extensão "recente" (GMW v4.1 Timeseries, 2020-2025) ────────────────────
-// O v3 acima só vai até 2020, e o v4 "oficial" (2020, GMW_YEAR) é só 1 ano —
-// nenhum dos dois serve pra medir perda DEPOIS de 2020. O GMW v4.1 Timeseries
-// (Zenodo 21346457, publicado 2026) resolve isso: 1985-2025 anual, 10m,
-// Sentinel-2/Landsat. Mas o arquivo publicado é 1 tar.gz de ~1,3GB com o
-// mundo inteiro (cada tile é 1 GeoTIFF de 41 bandas, uma por ano) — baixamos
-// esse arquivo 1x, extraímos só as 2 tiles que cobrem Balneário Barra do Sul
-// (~3,8MB) e commitamos esse recorte em api/data/gmw-v4112/. A API nunca
-// busca o arquivo de 1,3GB — só lê esses arquivos locais já recortados.
+// ── Extensão do manguezal (GMW v4.1 Timeseries, 1996-2025) ─────────────────
+// Fonte única pra toda a extensão/histórico/perda: 1985-2025 anual, 10m,
+// Sentinel-2/Landsat, UMA metodologia contínua (suavização Bayesiana + cadeia
+// de Markov sobre todos os sensores combinados na hora de treinar, não
+// depois) — ver comentário de GMW_FULL_HISTORY_YEARS abaixo pra por que isso
+// substituiu o v3 (25m, 1996-2019) + v4 (10m, só 2020) que a camada visual
+// usava antes. Zenodo 21346457. Mas o arquivo publicado é 1 tar.gz de
+// ~1,3GB com o mundo inteiro (cada tile é 1 GeoTIFF de 41 bandas, uma por
+// ano) — baixamos esse arquivo 1x, extraímos só as 2 tiles que cobrem
+// Balneário Barra do Sul (~3,8MB) e commitamos esse recorte em
+// api/data/gmw-v4112/. A API nunca busca o arquivo de 1,3GB — só lê esses
+// arquivos locais já recortados.
 const GMW_RECENT_TILE_DIR = path.join(__dirname, "data", "gmw-v4112");
 const GMW_RECENT_YEAR_START = 1985;
-const GMW_RECENT_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
 
 function gmwRecentTilePath(tile) {
   const core = formatTileCore(tile, { northBased: true });
@@ -1017,8 +850,9 @@ async function computeGmwMaskRecent(west, south, east, north, cols, rows, year) 
   return mangrove;
 }
 
-// Todo o histórico (chart e perda) usa SÓ o v4.1.12 agora — inclusive pra
-// 1996-2019, que antes vinha do v3. Motivo: descobrimos que o v4.1.12 já
+// Tudo usa SÓ o v4.1.12 agora — histórico, perda E a camada visual do mapa
+// (seletor de ano em "Concentração de manguezal"), que antes vinha do v3
+// (25m, 1996-2019) + v4 (10m, só 2020). Motivo: descobrimos que o v4.1.12 já
 // cobre 1985-2025 inteiro com UMA metodologia contínua (suavização Bayesiana
 // + cadeia de Markov sobre todos os sensores — JAXA SAR, Landsat, Sentinel-2
 // — combinados na hora de treinar, não depois). Comparar v3 (25m) com
@@ -1026,9 +860,7 @@ async function computeGmwMaskRecent(west, south, east, north, cols, rows, year) 
 // (resolução melhor enxerga manguezal fino que o produto antigo nunca via) —
 // testamos ao vivo: 1996-2019-2020-2025 tudo pelo v4.1.12 dá uma transição
 // suave em 2019→2020 (376→377 ha), sem o degrau que aparecia misturando v3
-// com v4. O v3 continua sendo usado só na camada visual do mapa (seletor de
-// ano em "Concentração de manguezal"), que mostra 1 ano por vez — não soma
-// nem compara dois anos, então a troca de sensor não distorce nada ali.
+// com v4.
 const GMW_FULL_HISTORY_YEARS = Array.from({ length: 2025 - 1996 + 1 }, (_, i) => 1996 + i);
 
 async function computeGmwExtentRecent(west, south, east, north, cols, rows, year, polygons) {
@@ -1043,6 +875,16 @@ async function computeGmwExtentRecent(west, south, east, north, cols, rows, year
     }
   }
   return { mangrove, areaHa: Math.round(mangroveCells * cellAreaHa) };
+}
+
+// Extensão de UM ano pra camada visual do mapa (área VISÍVEL, sem filtro de
+// município — diferente de computeGmwExtentRecent acima, que é só pro
+// histórico/perda).
+async function computeGmwExtentViewport(west, south, east, north, cols, rows, year) {
+  const mangrove = await computeGmwMaskRecent(west, south, east, north, cols, rows, year);
+  const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
+  const areaHa = Math.round(mangrove.reduce((s, v) => s + v, 0) * cellAreaHa);
+  return { mangrove, areaHa };
 }
 
 // ── Perda de manguezal (diferença entre dois anos) ─────────────────────────
@@ -1131,10 +973,18 @@ app.get("/mangrove-extent-gmw", async (req, res) => {
   const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
   const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
   const requestedYear = Number(req.query.year);
-  const year = GMW_HISTORY_YEARS.includes(requestedYear) ? requestedYear : GMW_YEAR;
+  const year = GMW_FULL_HISTORY_YEARS.includes(requestedYear) ? requestedYear : 2025;
 
   try {
-    const { mangrove, areaHa } = await computeGmwExtent(west, south, east, north, cols, rows, year);
+    const { mangrove, areaHa } = await computeGmwExtentViewport(
+      west,
+      south,
+      east,
+      north,
+      cols,
+      rows,
+      year,
+    );
     const data = { bbox: [west, south, east, north], cols, rows, mangrove, areaHa, year };
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
