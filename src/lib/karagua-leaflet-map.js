@@ -172,7 +172,7 @@ class KaraguaLeafletMap extends HTMLElement {
           flex: 0 0 auto;
           display: flex;
           flex-direction: column;
-          height: 305px;
+          height: 240px;
           background: #FFFFFF;
           border-top: 1px solid #E8E4DC;
           box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
@@ -189,7 +189,7 @@ class KaraguaLeafletMap extends HTMLElement {
         #hud-handle {
           position: absolute;
           left: 50%;
-          bottom: 296px;
+          bottom: 231px;
           transform: translateX(-50%);
           z-index: 5;
           width: 44px;
@@ -230,7 +230,7 @@ class KaraguaLeafletMap extends HTMLElement {
           display: flex;
           flex-direction: column;
           min-height: 0;
-          padding: 10px 16px 6px;
+          padding: 6px 16px 2px;
           overflow-y: auto;
           color: #2C3E50;
           font-family: 'Aileron', sans-serif;
@@ -242,7 +242,7 @@ class KaraguaLeafletMap extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 14px;
-          margin: 0 0 6px;
+          margin: 0 0 2px;
           font-weight: 600;
           font-size: 11px;
           text-transform: uppercase;
@@ -277,7 +277,7 @@ class KaraguaLeafletMap extends HTMLElement {
         .hud-divider-h {
           height: 1px;
           background: #E8E4DC;
-          margin: 7px 0;
+          margin: 3px 0;
         }
         /* Linha/coluna encolhida ao conteúdo (não 1fr 1fr): rótulo e valor
            são curtos, então "1fr 1fr" deixava um vão enorme entre os dois.
@@ -370,10 +370,15 @@ class KaraguaLeafletMap extends HTMLElement {
           margin: 2px 0 0 23px;
           line-height: 1.3;
         }
+        /* O recuo de 23px acima alinha o crédito embaixo de um checkbox
+           (Camadas) — #history-credit não tem checkbox do lado, esse
+           recuo só roubava largura à toa e forçava quebra de linha mais
+           cedo num texto que já é comprido. */
+        #history-credit { margin-left: 0; margin-top: 1px; }
         .layer-button {
           display: block;
           margin-top: 6px;
-          padding: 6px 12px;
+          padding: 3px 12px;
           border: 1px solid #E8E4DC;
           border-radius: 6px;
           background: #FBF9F4;
@@ -447,7 +452,7 @@ class KaraguaLeafletMap extends HTMLElement {
           margin-top: 2px;
         }
         .gmw-year-ticks span { font-size: 9px; color: #A8A296; }
-        .history-hint { font-size: 11px; color: #6B7B8D; margin: 0 0 5px; line-height: 1.4; }
+        .history-hint { font-size: 11px; color: #6B7B8D; margin: 0 0 2px; line-height: 1.3; }
         /* Junta o texto explicativo com o botão de recalcular numa linha só
            — botão sozinho embaixo do gráfico, largo espaço em branco do
            lado, ficava com aparência solta/sem lugar certo. */
@@ -456,7 +461,7 @@ class KaraguaLeafletMap extends HTMLElement {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          margin-bottom: 5px;
+          margin-bottom: 1px;
         }
         .hud-row-between .history-hint { margin: 0; flex: 1; }
         .hud-row-between .layer-button { margin-top: 0; flex-shrink: 0; }
@@ -472,7 +477,7 @@ class KaraguaLeafletMap extends HTMLElement {
           font-size: 15px;
           font-weight: 500;
           font-variant-numeric: tabular-nums;
-          margin: 0 0 2px;
+          margin: 0;
         }
         .loss-period-net.negative { color: #b23b3b; }
         .loss-period-net.positive { color: #4E8748; }
@@ -571,13 +576,13 @@ class KaraguaLeafletMap extends HTMLElement {
           }
           .hud-tab.active { color: #4E8748; border-bottom-color: #4E8748; }
           .hud-grid { grid-template-columns: 1fr; }
-          #hud-dock { height: 355px; }
-          #hud-handle { bottom: 346px; }
+          #hud-dock { height: 320px; }
+          #hud-handle { bottom: 311px; }
           #hud-dock.collapsed ~ #hud-handle { bottom: 10px; }
         }
         @media (max-width: 480px) {
-          #hud-dock { height: 368px; }
-          #hud-handle { bottom: 359px; }
+          #hud-dock { height: 300px; }
+          #hud-handle { bottom: 291px; }
         }
       </style>
       <svg width="0" height="0" style="position:absolute">
@@ -665,7 +670,7 @@ class KaraguaLeafletMap extends HTMLElement {
                 </div>
                 <div data-tab-panel-group="data" data-tab-panel="history">
                   <div class="hud-row-between">
-                    <p class="history-hint">Área de manguezal (ha) em todo o município de Balneário Barra do Sul, por ano.</p>
+                    <p class="history-hint">Área de manguezal (ha) por ano, no município.</p>
                     <button type="button" id="history-refresh-btn" class="layer-button">Recalcular</button>
                   </div>
                   <div id="history-chart-wrap"></div>
@@ -1686,11 +1691,14 @@ class KaraguaLeafletMap extends HTMLElement {
   static _renderHistoryChart(years) {
     if (!years?.length) return `<div class="history-error">Sem dados pra essa área.</div>`;
     const w = 198;
-    const h = 130;
-    const padBottom = 17;
-    const padTop = 7;
+    const h = 108;
+    const padBottom = 16;
+    const padTop = 6;
     const maxHa = Math.max(...years.map((y) => y.areaHa), 1);
-    const barGap = years.length > 15 ? 1 : 2;
+    // Gap bem menor que antes (0.5 em vez de 1): com 30 barras o espaço
+    // entre elas comia boa parte da largura — encolher o gap deixa cada
+    // barra mais grossa sem mexer na altura do gráfico.
+    const barGap = years.length > 15 ? 0.5 : 2;
     const barW = w / years.length;
     const labelEvery = years.length > 15 ? 5 : 1;
     const bars = years
