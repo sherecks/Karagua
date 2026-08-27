@@ -148,107 +148,182 @@ class KaraguaLeafletMap extends HTMLElement {
           outline-offset: 2px;
         }
 
-        #panel-toggle {
+        /* Dock inferior estilo HUD: substitui o painel lateral flutuante
+           (posicionado por cima do mapa) por um layout dividido de verdade
+           — #map-shell empilha o mapa e o dock em flex-column, então o
+           dock reduz a ALTURA do mapa (flex: 1 no #map) em vez de só
+           sobrepor. Fundo branco (não a superfície escura da DS) — só a
+           estrutura em grade + números em mono é que carrega o "HUD",
+           a cor fica no resto da identidade clara do site. */
+        #map-shell {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          height: 100%;
+        }
+        /* z-index:0 (mesmo sem empilhar contra nada aqui dentro) isola os
+           panes internos do Leaflet (tilePane ~200, controles ~1000) num
+           contexto de empilhamento PRÓPRIO — sem isso eles competem
+           diretamente com #hud-handle (irmão fora do #map) na mesma
+           pilha, e como 200 > 5 a tile pintava por cima da alça. */
+        #map { flex: 1 1 auto; min-height: 0; position: relative; z-index: 0; }
+        #hud-dock {
+          flex: 0 0 auto;
+          display: flex;
+          flex-direction: column;
+          height: 240px;
+          background: #FFFFFF;
+          border-top: 1px solid #E8E4DC;
+          box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
+          overflow: hidden;
+          transition: height 0.25s ease, border-color 0.25s ease;
+        }
+        #hud-dock.collapsed { height: 0; border-top-color: transparent; box-shadow: none; }
+        /* A alça de recolher NÃO mora dentro do dock (não reserva uma
+           linha inteira de altura pro conteúdo) — é uma aba pequena,
+           irmã do dock, que flutua encavalada na borda de cima dele.
+           O seletor '#hud-dock.collapsed ~ #hud-handle' (combinador de
+           irmão geral) reposiciona ela puramente em CSS quando o dock
+           recolhe, sem precisar sincronizar posição via JS. */
+        #hud-handle {
           position: absolute;
-          top: 80px;
-          right: 38px;
-          z-index: 1001;
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: #FBF9F4;
-          border: 1px solid #E8E4DC;
-          cursor: pointer;
+          left: 50%;
+          bottom: 231px;
+          transform: translateX(-50%);
+          z-index: 5;
+          width: 44px;
+          height: 18px;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-          transition: background 0.15s;
-        }
-        #panel-toggle:hover { background: #EDE9E0; }
-        #side-panel {
-          position: absolute;
-          top: 80px;
-          right: 88px;
-          z-index: 1000;
-          background: #FBF9F4;
+          background: #FFFFFF;
           border: 1px solid #E8E4DC;
-          border-radius: 6px;
-          padding: 14px 16px;
-          width: 230px;
-          max-height: calc(100vh - 100px);
-          overflow-y: auto;
-          font-family: 'Aileron', sans-serif;
-          color: #2C3E50;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-          transition: opacity 0.2s ease, transform 0.2s ease;
-        }
-        #side-panel.hidden {
-          opacity: 0;
-          pointer-events: none;
-          transform: translateX(8px);
-        }
-        /* Seções recolhíveis: título vira botão (com chevron) que
-           esconde/mostra o corpo — resolve o painel ficando alto demais com
-           tantas camadas, sem esconder nada de vez (o usuário escolhe o que
-           ver). */
-        .section-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-          width: 100%;
-          margin: 0 0 8px;
-          padding: 0;
-          border: none;
-          background: none;
-          font: inherit;
-          font-weight: 600;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
+          border-radius: 4px 4px 0 0;
+          border-bottom: none;
           color: #6B7B8D;
           cursor: pointer;
+          box-shadow: 0 -2px 6px rgba(0,0,0,0.06);
+          transition: bottom 0.25s ease, background 0.15s, color 0.15s;
         }
-        .section-header:hover { color: #2C3E50; }
-        .section-header:focus-visible {
+        #hud-dock.collapsed ~ #hud-handle {
+          bottom: 10px;
+          border-radius: 4px;
+          border-bottom: 1px solid #E8E4DC;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+        }
+        #hud-handle:hover { background: #FBF9F4; color: #2C3E50; }
+        #hud-handle:focus-visible {
           outline: 3px solid rgba(199,217,38,0.4);
           outline-offset: 2px;
         }
-        .chevron {
-          flex-shrink: 0;
-          transition: transform 0.2s ease;
+        .hud-handle-chevron { transition: transform 0.2s ease; }
+        #hud-dock.collapsed ~ #hud-handle .hud-handle-chevron { transform: rotate(180deg); }
+        .hud-mobile-tabs { display: none; }
+        .hud-grid {
+          flex: 1 1 auto;
+          min-height: 0;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
         }
-        .side-section.collapsed .section-header { margin-bottom: 0; }
-        .side-section.collapsed .chevron { transform: rotate(-90deg); }
-        .side-section.collapsed .section-body { display: none; }
-        .panel-divider {
+        .hud-col {
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          padding: 10px 16px 6px;
+          overflow-y: auto;
+          color: #2C3E50;
+          font-family: 'Aileron', sans-serif;
+          scrollbar-width: none; /* Firefox */
+        }
+        .hud-col::-webkit-scrollbar { display: none; } /* Chrome/Safari/Edge */
+        .hud-col:not(:last-child) { border-right: 1px solid #E8E4DC; }
+        .hud-col-title, .hud-col-title-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin: 0 0 6px;
+          font-weight: 600;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #6B7B8D;
+        }
+        .hud-subtab {
+          margin: 0;
+          padding: 0 0 2px;
+          border: none;
+          border-bottom: 2px solid transparent;
+          background: none;
+          font: inherit;
+          font-weight: 600;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #A8A296;
+          cursor: pointer;
+        }
+        .hud-subtab:hover { color: #2C3E50; }
+        .hud-subtab.active { color: #4E8748; border-bottom-color: #4E8748; }
+        /* Sub-painéis (Histórico/Pontos dentro de DADOS): só o ativo
+           aparece, em qualquer largura de tela. */
+        [data-tab-panel]:not([data-active]) { display: none; }
+        /* Colunas do dock (Status/Camadas/Dados): a partir de 1024px as 3
+           aparecem juntas sempre, ignorando qual está "ativa" — a regra
+           acima só importa abaixo de 1024px (ver media query). */
+        @media (min-width: 1024px) {
+          .hud-col[data-tab-panel] { display: flex !important; }
+        }
+        .hud-divider-h {
           height: 1px;
           background: #E8E4DC;
           margin: 12px 0;
         }
+        /* Linha/coluna encolhida ao conteúdo (não 1fr 1fr): rótulo e valor
+           são curtos, então "1fr 1fr" deixava um vão enorme entre os dois.
+           Encolhido, sobra espaço na coluna Condições pra Legenda entrar
+           ao lado (ver .hud-status-row) em vez de embaixo. */
         .cond-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 4px 8px;
+          grid-template-columns: max-content max-content;
+          gap: 4px 32px;
+        }
+        .hud-status-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 16px;
+        }
+        .hud-legend {
+          display: flex;
+          flex-direction: column;
+          padding-left: 14px;
+          border-left: 1px solid #E8E4DC;
         }
         .cond-label { color: #6B7B8D; font-size: 12px; }
-        .cond-value { font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+        .cond-value {
+          font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+          font-weight: 500;
+          font-size: 13px;
+          color: #1A2332;
+          font-variant-numeric: tabular-nums;
+        }
         .cond-divider { grid-column: 1 / -1; height: 1px; background: #E8E4DC; margin: 4px 0; }
-        #cond-body.loading { opacity: 0.5; }
+        .hud-col-body.loading { opacity: 0.5; }
         .legend-item {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          line-height: 2.2;
+          gap: 6px;
+          font-size: 12px;
+          color: #45566A;
+          line-height: 1.9;
+          white-space: nowrap;
         }
         .layer-toggle {
           display: flex;
           align-items: center;
           gap: 8px;
           font-size: 13px;
-          line-height: 2.2;
+          line-height: 1.7;
           cursor: pointer;
           user-select: none;
         }
@@ -286,14 +361,14 @@ class KaraguaLeafletMap extends HTMLElement {
         .layer-credit {
           display: block;
           font-size: 10px;
-          color: #6B7B8D;
-          margin: 4px 0 0 23px;
-          line-height: 1.4;
+          color: #A8A296;
+          margin: 2px 0 0 23px;
+          line-height: 1.3;
         }
         .layer-button {
           display: block;
-          margin-top: 10px;
-          padding: 8px 12px;
+          margin-top: 6px;
+          padding: 6px 12px;
           border: 1px solid #E8E4DC;
           border-radius: 6px;
           background: #FBF9F4;
@@ -311,19 +386,20 @@ class KaraguaLeafletMap extends HTMLElement {
           border-color: #1A2332;
         }
         .gmw-year-row {
-          margin: 6px 0 0 23px;
+          margin: 4px 0 0 23px;
         }
         .gmw-year-row-top {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 2px;
+          margin-bottom: 1px;
         }
         .gmw-year-label { font-size: 11px; color: #6B7B8D; }
         .gmw-year-value {
+          font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
           font-size: 13px;
-          font-weight: 700;
-          color: #2C3E50;
+          font-weight: 500;
+          color: #1A2332;
           font-variant-numeric: tabular-nums;
         }
         .gmw-year-slider {
@@ -376,8 +452,9 @@ class KaraguaLeafletMap extends HTMLElement {
         .loss-period:last-child { margin-bottom: 0; }
         .loss-period-years { font-size: 12px; font-weight: 600; color: #2C3E50; }
         .loss-period-net {
+          font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
           font-size: 15px;
-          font-weight: 700;
+          font-weight: 500;
           font-variant-numeric: tabular-nums;
           margin: 2px 0;
         }
@@ -386,7 +463,6 @@ class KaraguaLeafletMap extends HTMLElement {
         .loss-period-detail { font-size: 11px; color: #6B7B8D; }
         .loss-period-source { font-size: 10px; color: #A8A296; margin-top: 2px; }
         #map.area-select-mode { cursor: crosshair; }
-        #points-section { margin-top: 0; }
         .points-group-label {
           font-size: 11px;
           font-weight: 600;
@@ -414,46 +490,36 @@ class KaraguaLeafletMap extends HTMLElement {
         .point-item:hover { background: #EDE9E0; }
         .point-item.active { background: #EDE9E0; font-weight: 600; }
         #points-scroll {
-          max-height: 200px;
           overflow-y: auto;
           margin-top: 2px;
+          scrollbar-width: none; /* Firefox */
         }
-        #points-scroll::-webkit-scrollbar { width: 4px; }
-        #points-scroll::-webkit-scrollbar-thumb { background: #D4CEBC; border-radius: 2px; }
+        #points-scroll::-webkit-scrollbar { display: none; } /* Chrome/Safari/Edge */
 
-        #info-panel {
-          display: none;
-          position: absolute;
-          bottom: 40px;
-          left: 40px;
-          z-index: 1000;
-          background: #FBF9F4;
+        .point-detail {
+          position: relative;
           border: 1px solid #E8E4DC;
           border-radius: 6px;
-          padding: 12px 16px;
-          width: 260px;
-          font-family: 'Aileron', sans-serif;
-          font-size: 14px;
-          line-height: 1.6;
-          color: #2C3E50;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+          padding: 10px 22px 10px 12px;
+          margin-bottom: 10px;
+          background: #FBF9F4;
         }
-        #info-panel.visible { display: block; }
-        #info-panel .info-title {
+        .point-detail[hidden] { display: none; }
+        .point-detail-title {
           font-weight: 600;
-          font-size: 15px;
-          margin-bottom: 6px;
-          padding-right: 20px;
-        }
-        #info-panel .info-body {
           font-size: 13px;
+          color: #2C3E50;
+          margin-bottom: 4px;
+        }
+        .point-detail-body {
+          font-size: 12px;
           color: #6B7B8D;
           line-height: 1.5;
         }
-        #info-panel .info-close {
+        .point-detail-close {
           position: absolute;
-          top: 8px;
-          right: 10px;
+          top: 6px;
+          right: 8px;
           background: none;
           border: none;
           cursor: pointer;
@@ -462,27 +528,41 @@ class KaraguaLeafletMap extends HTMLElement {
           line-height: 1;
           padding: 0;
         }
-        #info-panel .info-close:hover { color: #2C3E50; }
+        .point-detail-close:hover { color: #2C3E50; }
 
+        /* Abaixo de 1024px as 3 colunas não cabem lado a lado — viram 3
+           abas (mesmo mecanismo de data-tab-group/data-tab-panel usado
+           pra Histórico/Pontos dentro de DADOS, só que no grupo "mobile"),
+           uma coluna por vez em vez de empilhar tudo verticalmente. */
+        @media (max-width: 1023px) {
+          .hud-mobile-tabs {
+            display: flex;
+            flex: 0 0 auto;
+            border-bottom: 1px solid #E8E4DC;
+          }
+          .hud-tab {
+            flex: 1;
+            padding: 8px 4px;
+            border: none;
+            border-bottom: 2px solid transparent;
+            background: none;
+            font-family: 'Aileron', sans-serif;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #A8A296;
+            cursor: pointer;
+          }
+          .hud-tab.active { color: #4E8748; border-bottom-color: #4E8748; }
+          .hud-grid { grid-template-columns: 1fr; }
+          #hud-dock { height: 320px; }
+          #hud-handle { bottom: 311px; }
+          #hud-dock.collapsed ~ #hud-handle { bottom: 10px; }
+        }
         @media (max-width: 480px) {
-          #panel-toggle {
-            top: 68px;
-            right: 12px;
-          }
-          #side-panel {
-            top: 68px;
-            right: 62px;
-            width: min(220px, calc(100vw - 80px));
-          }
-          #points-scroll {
-            max-height: 140px;
-          }
-          #info-panel {
-            left: 12px;
-            right: 12px;
-            width: auto;
-            bottom: 24px;
-          }
+          #hud-dock { height: 300px; }
+          #hud-handle { bottom: 291px; }
         }
       </style>
       <svg width="0" height="0" style="position:absolute">
@@ -494,108 +574,95 @@ class KaraguaLeafletMap extends HTMLElement {
           </feComponentTransfer>
         </filter>
       </svg>
-      <div id="map"></div>
-      <button id="panel-toggle" aria-label="Abrir painel">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2C3E50" stroke-width="2" stroke-linecap="round">
-          <line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/>
-        </svg>
-      </button>
-      <div id="side-panel">
-        <div id="side-content">
-        <div class="side-section collapsed" id="cond-section" data-section="cond">
-          <button type="button" class="section-header" aria-expanded="false">
-            <span>Condições</span>
-            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="section-body loading" id="cond-body">
-            <div class="cond-grid"><span class="cond-label">Carregando...</span></div>
+      <div id="map-shell">
+        <div id="map"></div>
+        <div id="hud-dock">
+          <div class="hud-mobile-tabs" id="hud-mobile-tabs">
+            <button type="button" class="hud-tab active" data-tab-group="mobile" data-tab="status" aria-selected="true">Status</button>
+            <button type="button" class="hud-tab" data-tab-group="mobile" data-tab="layers" aria-selected="false">Camadas</button>
+            <button type="button" class="hud-tab" data-tab-group="mobile" data-tab="data" aria-selected="false">Dados</button>
           </div>
-        </div>
-        <div class="panel-divider"></div>
-        <div class="side-section collapsed" id="legend-section" data-section="legend">
-          <button type="button" class="section-header" aria-expanded="false">
-            <span>Legenda</span>
-            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="section-body">
-            <div class="legend-item"><img src="./images/icon/Monitoramento.svg" width="20"> Monitoramento</div>
-            <div class="legend-item"><img src="./images/icon/Flora.svg" width="20"> Manguezais</div>
-            <div class="legend-item"><img src="./images/icon/Fauna.svg" width="20"> Berçários da Fauna</div>
-          </div>
-        </div>
-        <div class="panel-divider"></div>
-        <div class="side-section collapsed" id="layers-section" data-section="layers">
-          <button type="button" class="section-header" aria-expanded="false">
-            <span>Camadas</span>
-            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="section-body">
-            <label class="layer-toggle">
-              <input type="checkbox" id="wind-toggle">
-              <span>Vento</span>
-            </label>
-            <label class="layer-toggle">
-              <input type="checkbox" id="gmw-extent-toggle" checked>
-              <span>Concentração de manguezal</span>
-            </label>
-            <div class="gmw-year-row" id="gmw-year-row">
-              <div class="gmw-year-row-top">
-                <span class="gmw-year-label">Ano</span>
-                <span class="gmw-year-value" id="gmw-year-value">2025</span>
+          <div class="hud-grid">
+            <div class="hud-col" data-tab-panel-group="mobile" data-tab-panel="status" data-active>
+              <div class="hud-col-title">Condições</div>
+              <div class="hud-status-row">
+                <div class="hud-col-body loading" id="cond-body">
+                  <div class="cond-grid"><span class="cond-label">Carregando...</span></div>
+                </div>
+                <div class="hud-legend">
+                  <div class="legend-item"><img src="./images/icon/Monitoramento.svg" width="16"> Monitoramento</div>
+                  <div class="legend-item"><img src="./images/icon/Flora.svg" width="16"> Manguezais</div>
+                  <div class="legend-item"><img src="./images/icon/Fauna.svg" width="16"> Berçários da Fauna</div>
+                </div>
               </div>
-              <input
-                type="range"
-                id="gmw-year-slider"
-                class="gmw-year-slider"
-                min="0"
-                max="29"
-                step="1"
-                value="29"
-                aria-label="Ano da camada de manguezal"
-              >
-              <div class="gmw-year-ticks"><span>1996</span><span>2025</span></div>
             </div>
-            <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m</span>
-            <label class="layer-toggle">
-              <input type="checkbox" id="soc-toggle">
-              <span>Carbono orgânico do solo</span>
-            </label>
-            <span class="layer-credit" id="soc-credit">Sanderman et al. 2018 (atualização 2023) · 30m</span>
-            <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
+            <div class="hud-col" data-tab-panel-group="mobile" data-tab-panel="layers">
+              <div class="hud-col-title">Camadas</div>
+              <div class="hud-col-body">
+                <label class="layer-toggle">
+                  <input type="checkbox" id="wind-toggle">
+                  <span>Vento</span>
+                </label>
+                <label class="layer-toggle">
+                  <input type="checkbox" id="gmw-extent-toggle" checked>
+                  <span>Concentração de manguezal</span>
+                </label>
+                <div class="gmw-year-row" id="gmw-year-row">
+                  <div class="gmw-year-row-top">
+                    <span class="gmw-year-label">Ano</span>
+                    <span class="gmw-year-value" id="gmw-year-value">2025</span>
+                  </div>
+                  <input
+                    type="range"
+                    id="gmw-year-slider"
+                    class="gmw-year-slider"
+                    min="0"
+                    max="29"
+                    step="1"
+                    value="29"
+                    aria-label="Ano da camada de manguezal"
+                  >
+                  <div class="gmw-year-ticks"><span>1996</span><span>2025</span></div>
+                </div>
+                <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m</span>
+                <label class="layer-toggle">
+                  <input type="checkbox" id="soc-toggle">
+                  <span>Carbono orgânico do solo</span>
+                </label>
+                <span class="layer-credit" id="soc-credit">Sanderman et al. 2018 (atualização 2023) · 30m</span>
+                <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
+              </div>
+            </div>
+            <div class="hud-col" data-tab-panel-group="mobile" data-tab-panel="data">
+              <div class="hud-col-title-row">
+                <button type="button" class="hud-subtab active" data-tab-group="data" data-tab="points" aria-selected="true">Pontos</button>
+                <button type="button" class="hud-subtab" data-tab-group="data" data-tab="history" aria-selected="false">Histórico</button>
+              </div>
+              <div class="hud-col-body">
+                <div data-tab-panel-group="data" data-tab-panel="points" data-active>
+                  <div id="point-detail" class="point-detail" hidden>
+                    <button type="button" class="point-detail-close" aria-label="Fechar detalhe">×</button>
+                    <div class="point-detail-title"></div>
+                    <div class="point-detail-body"></div>
+                  </div>
+                  <div id="points-scroll"></div>
+                </div>
+                <div data-tab-panel-group="data" data-tab-panel="history">
+                  <p class="history-hint">Área de manguezal (ha) em todo o município de Balneário Barra do Sul, por ano.</p>
+                  <div id="history-chart-wrap"></div>
+                  <button type="button" id="history-refresh-btn" class="layer-button">Recalcular</button>
+                  <span class="layer-credit" id="history-credit"></span>
+                  <div class="hud-divider-h"></div>
+                  <p class="history-hint">Perda e ganho de manguezal entre 1996 e 2025, sempre pelo mesmo satélite/resolução.</p>
+                  <div id="loss-wrap"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="panel-divider"></div>
-        <div class="side-section collapsed" id="history-section" data-section="history">
-          <button type="button" class="section-header" aria-expanded="false">
-            <span>Histórico do manguezal</span>
-            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="section-body" id="history-body">
-            <p class="history-hint">Área de manguezal (ha) em todo o município de Balneário Barra do Sul, por ano.</p>
-            <div id="history-chart-wrap"></div>
-            <button type="button" id="history-refresh-btn" class="layer-button">Recalcular</button>
-            <span class="layer-credit" id="history-credit"></span>
-            <div class="panel-divider"></div>
-            <p class="history-hint">Perda e ganho de manguezal entre 1996 e 2025, sempre pelo mesmo satélite/resolução.</p>
-            <div id="loss-wrap"></div>
-          </div>
-        </div>
-        <div class="panel-divider"></div>
-        <div class="side-section collapsed" id="points-section" data-section="points">
-          <button type="button" class="section-header" aria-expanded="false">
-            <span>Pontos de interesse</span>
-            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="section-body">
-            <div id="points-scroll"></div>
-          </div>
-        </div>
-        </div>
-      </div>
-      <div id="info-panel">
-        <button class="info-close">×</button>
-        <div class="info-title"></div>
-        <div class="info-body"></div>
+        <button type="button" id="hud-handle" aria-expanded="true" aria-label="Recolher painel">
+          <svg class="hud-handle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
       </div>
     `;
   }
@@ -644,8 +711,9 @@ class KaraguaLeafletMap extends HTMLElement {
     this._loadGeoJSONFiles();
     if (this._csvUrl) this._loadCSVData();
     void this._loadConditions();
-    this._initSideToggle();
-    this._initSectionToggles();
+    this._initHudDockToggle();
+    this._initHudTabs();
+    this._initPointDetail();
     this._initWindToggle();
     this._initGmwExtentToggle();
     this._initSocToggle();
@@ -747,18 +815,21 @@ class KaraguaLeafletMap extends HTMLElement {
           });
       })
       .catch((err) => console.error("Erro ao carregar CSV:", err));
-
-    const panel = this.shadowRoot.getElementById("info-panel");
-    panel.querySelector(".info-close").addEventListener("click", () => {
-      panel.classList.remove("visible");
-    });
   }
 
+  // Mostra o detalhe do ponto clicado dentro da aba Pontos (coluna DADOS).
+  // Como esse bloco só é visível com o dock expandido e a aba certa ativa,
+  // garante os dois aqui — assim clicar num marcador sempre produz um
+  // resultado visível, igual ao card flutuante que isso substituiu.
   _showInfo(titulo, corpo) {
-    const panel = this.shadowRoot.getElementById("info-panel");
-    panel.querySelector(".info-title").textContent = titulo;
-    panel.querySelector(".info-body").textContent = corpo;
-    panel.classList.add("visible");
+    const detail = this.shadowRoot.getElementById("point-detail");
+    if (!detail) return;
+    detail.querySelector(".point-detail-title").textContent = titulo;
+    detail.querySelector(".point-detail-body").textContent = corpo;
+    detail.hidden = false;
+    this._activateTab("data", "points");
+    this._activateTab("mobile", "data");
+    this._setHudDockCollapsed(false);
   }
 
   _makeIcons() {
@@ -838,31 +909,78 @@ class KaraguaLeafletMap extends HTMLElement {
     return !!this._map;
   }
 
-  _initSideToggle() {
-    const panel = this.shadowRoot.getElementById("side-panel");
-    const btn = this.shadowRoot.getElementById("panel-toggle");
-    const iconOpen = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2C3E50" stroke-width="2" stroke-linecap="round"><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/></svg>`;
-    const iconClose = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2C3E50" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  // Faixa retrátil no topo do dock: recolhe pra uma barra fina (o conteúdo
+  // some por overflow:hidden no #hud-dock, não precisa esconder cada filho)
+  // e devolve a altura pro mapa. Leaflet não redetecta sozinho o novo
+  // tamanho do container quando a altura muda por CSS — dispara
+  // invalidateSize() no fim da transição e no resize da janela.
+  _initHudDockToggle() {
+    const dock = this.shadowRoot.getElementById("hud-dock");
+    const handle = this.shadowRoot.getElementById("hud-handle");
+    if (!dock || !handle) return;
 
-    btn.addEventListener("click", () => {
-      const hidden = panel.classList.toggle("hidden");
-      btn.innerHTML = hidden ? iconOpen : iconClose;
-      btn.setAttribute("aria-label", hidden ? "Abrir painel" : "Fechar painel");
+    dock.addEventListener("transitionend", (e) => {
+      if (e.propertyName === "height") this._map?.invalidateSize();
+    });
+    window.addEventListener("resize", () => this._map?.invalidateSize());
+
+    handle.addEventListener("click", () => {
+      this._setHudDockCollapsed(!dock.classList.contains("collapsed"));
     });
   }
 
-  // Cada seção do painel (Condições, Legenda, Camadas, Pontos de interesse)
-  // abre/fecha independente — todas entram FECHADAS: com todas abertas o
-  // painel passava do fim da tela (a lista de "Pontos de interesse" em
-  // particular pode ter dezenas de itens). O usuário abre só a seção que
-  // quer ver.
-  _initSectionToggles() {
-    this.shadowRoot.querySelectorAll(".side-section > .section-header").forEach((header) => {
-      header.addEventListener("click", () => {
-        const section = header.closest(".side-section");
-        const collapsed = section.classList.toggle("collapsed");
-        header.setAttribute("aria-expanded", String(!collapsed));
-      });
+  _setHudDockCollapsed(collapsed) {
+    const dock = this.shadowRoot.getElementById("hud-dock");
+    const handle = this.shadowRoot.getElementById("hud-handle");
+    if (!dock || !handle) return;
+    dock.classList.toggle("collapsed", collapsed);
+    handle.setAttribute("aria-expanded", String(!collapsed));
+    handle.setAttribute("aria-label", collapsed ? "Expandir painel" : "Recolher painel");
+  }
+
+  // Grupos de abas do HUD: "mobile" (Status/Camadas/Dados — só existe
+  // abaixo de 1024px, ver media query; nas 3 colunas do desktop o
+  // data-active de cada uma é ignorado) e "data" (Histórico/Pontos, dentro
+  // da coluna DADOS, ativo em qualquer largura). Botão e painel casam pelo
+  // par data-tab-group/data-tab-panel-group + a chave em data-tab/
+  // data-tab-panel.
+  _initHudTabs() {
+    this.shadowRoot.querySelectorAll("button[data-tab-group]").forEach((btn) => {
+      btn.addEventListener("click", () => this._activateTab(btn.dataset.tabGroup, btn.dataset.tab));
+    });
+  }
+
+  _activateTab(group, key) {
+    const root = this.shadowRoot;
+    root.querySelectorAll(`button[data-tab-group="${group}"]`).forEach((btn) => {
+      const active = btn.dataset.tab === key;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", String(active));
+    });
+    root.querySelectorAll(`[data-tab-panel-group="${group}"]`).forEach((panel) => {
+      panel.toggleAttribute("data-active", panel.dataset.tabPanel === key);
+    });
+    // Histórico só carrega na 1ª vez que a aba abre (request pesado — ver
+    // _loadHistory/_loadLoss); antes disso a lista de Pontos é a aba
+    // padrão, então esse gatilho normalmente só dispara com clique
+    // explícito do usuário.
+    if (group === "data" && key === "history" && !this._historyLoaded) {
+      void this._loadHistory();
+      void this._loadLoss();
+    }
+  }
+
+  // Substitui o antigo card flutuante #info-panel: o detalhe do ponto
+  // clicado agora vive dentro da aba Pontos (ver _showInfo). O botão de
+  // fechar só limpa a seleção, não afeta as abas/dock.
+  _initPointDetail() {
+    const closeBtn = this.shadowRoot.querySelector("#point-detail .point-detail-close");
+    closeBtn?.addEventListener("click", () => {
+      const detail = this.shadowRoot.getElementById("point-detail");
+      if (detail) detail.hidden = true;
+      this.shadowRoot
+        .querySelectorAll(".point-item.active")
+        .forEach((el) => el.classList.remove("active"));
     });
   }
 
@@ -1457,29 +1575,18 @@ class KaraguaLeafletMap extends HTMLElement {
   }
 
   // Histórico: mesma ideia da camada de concentração acima, mas em vez de UM
-  // ano só, busca a área de manguezal (ha) pra 11 anos (1996-2020) na mesma
+  // ano só, busca a área de manguezal (ha) pra 30 anos (1996-2025) na mesma
   // região visível, de uma vez — dá pra ver o número mudando ano a ano, não
-  // só a mancha num instante. Carrega sob demanda (só quando a seção abre
-  // pela 1ª vez, ou quando o usuário pede pra recalcular) porque é um
-  // request bem mais pesado que os outros (11 anos × tiles).
+  // só a mancha num instante. Carrega sob demanda (só quando a aba
+  // Histórico abre pela 1ª vez — ver _activateTab — ou quando o usuário
+  // pede pra recalcular) porque é um request bem mais pesado que os outros
+  // (30 anos × tiles).
   _initHistorySection() {
-    const section = this.shadowRoot.getElementById("history-section");
-    const header = section?.querySelector(".section-header");
     const refreshBtn = this.shadowRoot.getElementById("history-refresh-btn");
-    if (header) {
-      header.addEventListener("click", () => {
-        if (!section.classList.contains("collapsed") && !this._historyLoaded) {
-          void this._loadHistory();
-          void this._loadLoss();
-        }
-      });
-    }
-    if (refreshBtn) {
-      refreshBtn.addEventListener("click", () => {
-        void this._loadHistory();
-        void this._loadLoss();
-      });
-    }
+    refreshBtn?.addEventListener("click", () => {
+      void this._loadHistory();
+      void this._loadLoss();
+    });
   }
 
   async _loadHistory() {
