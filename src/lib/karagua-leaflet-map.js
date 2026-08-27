@@ -172,7 +172,7 @@ class KaraguaLeafletMap extends HTMLElement {
           flex: 0 0 auto;
           display: flex;
           flex-direction: column;
-          height: 240px;
+          height: 305px;
           background: #FFFFFF;
           border-top: 1px solid #E8E4DC;
           box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
@@ -189,7 +189,7 @@ class KaraguaLeafletMap extends HTMLElement {
         #hud-handle {
           position: absolute;
           left: 50%;
-          bottom: 231px;
+          bottom: 296px;
           transform: translateX(-50%);
           z-index: 5;
           width: 44px;
@@ -277,7 +277,7 @@ class KaraguaLeafletMap extends HTMLElement {
         .hud-divider-h {
           height: 1px;
           background: #E8E4DC;
-          margin: 12px 0;
+          margin: 7px 0;
         }
         /* Linha/coluna encolhida ao conteúdo (não 1fr 1fr): rótulo e valor
            são curtos, então "1fr 1fr" deixava um vão enorme entre os dois.
@@ -299,6 +299,11 @@ class KaraguaLeafletMap extends HTMLElement {
           padding-left: 14px;
           border-left: 1px solid #E8E4DC;
         }
+        /* Maré (ver #cond-tide/_loadConditions): compacta, coluna estreita
+           — gap bem menor que o .cond-grid principal, senão "Próx. alta"
+           e o horário quebram linha ou esbarram na borda da coluna. */
+        #cond-tide .cond-grid { gap: 3px 10px; }
+        #cond-tide .cond-divider { margin: 8px 0 6px; }
         .cond-label { color: #6B7B8D; font-size: 12px; }
         .cond-value {
           font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
@@ -442,7 +447,19 @@ class KaraguaLeafletMap extends HTMLElement {
           margin-top: 2px;
         }
         .gmw-year-ticks span { font-size: 9px; color: #A8A296; }
-        .history-hint { font-size: 11px; color: #6B7B8D; margin: 0 0 8px; line-height: 1.4; }
+        .history-hint { font-size: 11px; color: #6B7B8D; margin: 0 0 5px; line-height: 1.4; }
+        /* Junta o texto explicativo com o botão de recalcular numa linha só
+           — botão sozinho embaixo do gráfico, largo espaço em branco do
+           lado, ficava com aparência solta/sem lugar certo. */
+        .hud-row-between {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 5px;
+        }
+        .hud-row-between .history-hint { margin: 0; flex: 1; }
+        .hud-row-between .layer-button { margin-top: 0; flex-shrink: 0; }
         .history-chart { display: block; overflow: visible; }
         .history-chart rect { transition: opacity 0.15s; }
         .history-chart rect:hover { opacity: 0.75; }
@@ -450,18 +467,16 @@ class KaraguaLeafletMap extends HTMLElement {
         .history-error { font-size: 12px; color: #b23b3b; padding: 8px 0; }
         .loss-period { margin: 0 0 10px; }
         .loss-period:last-child { margin-bottom: 0; }
-        .loss-period-years { font-size: 12px; font-weight: 600; color: #2C3E50; }
         .loss-period-net {
           font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
           font-size: 15px;
           font-weight: 500;
           font-variant-numeric: tabular-nums;
-          margin: 2px 0;
+          margin: 0 0 2px;
         }
         .loss-period-net.negative { color: #b23b3b; }
         .loss-period-net.positive { color: #4E8748; }
         .loss-period-detail { font-size: 11px; color: #6B7B8D; }
-        .loss-period-source { font-size: 10px; color: #A8A296; margin-top: 2px; }
         #map.area-select-mode { cursor: crosshair; }
         .points-group-label {
           font-size: 11px;
@@ -556,13 +571,13 @@ class KaraguaLeafletMap extends HTMLElement {
           }
           .hud-tab.active { color: #4E8748; border-bottom-color: #4E8748; }
           .hud-grid { grid-template-columns: 1fr; }
-          #hud-dock { height: 320px; }
-          #hud-handle { bottom: 311px; }
+          #hud-dock { height: 355px; }
+          #hud-handle { bottom: 346px; }
           #hud-dock.collapsed ~ #hud-handle { bottom: 10px; }
         }
         @media (max-width: 480px) {
-          #hud-dock { height: 300px; }
-          #hud-handle { bottom: 291px; }
+          #hud-dock { height: 368px; }
+          #hud-handle { bottom: 359px; }
         }
       </style>
       <svg width="0" height="0" style="position:absolute">
@@ -593,6 +608,7 @@ class KaraguaLeafletMap extends HTMLElement {
                   <div class="legend-item"><img src="./images/icon/Monitoramento.svg" width="16"> Monitoramento</div>
                   <div class="legend-item"><img src="./images/icon/Flora.svg" width="16"> Manguezais</div>
                   <div class="legend-item"><img src="./images/icon/Fauna.svg" width="16"> Berçários da Fauna</div>
+                  <div id="cond-tide"></div>
                 </div>
               </div>
             </div>
@@ -648,9 +664,11 @@ class KaraguaLeafletMap extends HTMLElement {
                   <div id="points-scroll"></div>
                 </div>
                 <div data-tab-panel-group="data" data-tab-panel="history">
-                  <p class="history-hint">Área de manguezal (ha) em todo o município de Balneário Barra do Sul, por ano.</p>
+                  <div class="hud-row-between">
+                    <p class="history-hint">Área de manguezal (ha) em todo o município de Balneário Barra do Sul, por ano.</p>
+                    <button type="button" id="history-refresh-btn" class="layer-button">Recalcular</button>
+                  </div>
                   <div id="history-chart-wrap"></div>
-                  <button type="button" id="history-refresh-btn" class="layer-button">Recalcular</button>
                   <span class="layer-credit" id="history-credit"></span>
                   <div class="hud-divider-h"></div>
                   <p class="history-hint">Perda e ganho de manguezal entre 1996 e 2025, sempre pelo mesmo satélite/resolução.</p>
@@ -1048,13 +1066,23 @@ class KaraguaLeafletMap extends HTMLElement {
         ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
         : "--";
 
-    const tideHtml = tideExtremes
-      ? `<div class="cond-divider"></div>
-         <span class="cond-label">Próx. alta</span>
-         <span class="cond-value">${fmt(nextHigh?.time)}${nextHigh ? ` · ${nextHigh.height?.toFixed(1)}m` : ""}</span>
-         <span class="cond-label">Próx. baixa</span>
-         <span class="cond-value">${fmt(nextLow?.time)}${nextLow ? ` · ${nextLow.height?.toFixed(1)}m` : ""}</span>`
-      : "";
+    // A maré NÃO entra no cond-grid (diferente de água/ondas/vento etc.) —
+    // ela só chega depois de um request à parte (Karaguá API), então
+    // aparecia de repente e engordava o grid, estourando a altura fixa da
+    // coluna Status (que já tinha sido calculada sem essas 2 linhas). Vai
+    // num bloco próprio embaixo da Legenda, que sobra espaço ali do lado.
+    const tideBlock = this.shadowRoot.getElementById("cond-tide");
+    if (tideBlock) {
+      tideBlock.innerHTML = tideExtremes
+        ? `<div class="cond-divider"></div>
+           <div class="cond-grid">
+             <span class="cond-label">Próx. alta</span>
+             <span class="cond-value">${fmt(nextHigh?.time)}${nextHigh ? ` · ${nextHigh.height?.toFixed(1)}m` : ""}</span>
+             <span class="cond-label">Próx. baixa</span>
+             <span class="cond-value">${fmt(nextLow?.time)}${nextLow ? ` · ${nextLow.height?.toFixed(1)}m` : ""}</span>
+           </div>`
+        : "";
+    }
 
     const marineHtml = marine
       ? `<span class="cond-label">Água</span>
@@ -1076,7 +1104,6 @@ class KaraguaLeafletMap extends HTMLElement {
         <span class="cond-value">${cur.relative_humidity_2m}%</span>
         <span class="cond-label">Pressão</span>
         <span class="cond-value">${Math.round(cur.surface_pressure)} hPa</span>
-        ${tideHtml}
       </div>
     `;
   }
@@ -1634,6 +1661,9 @@ class KaraguaLeafletMap extends HTMLElement {
     }
   }
 
+  // Sem o intervalo de anos nem a fonte aqui dentro — o parágrafo logo
+  // acima já diz "entre 1996 e 2025" e o crédito do gráfico já cita o
+  // mesmo GMW v4.1 Timeseries, repetir os dois só alongava o bloco à toa.
   static _renderLossPeriod(p) {
     const net = p.gainHa - p.lossHa;
     const netClass = net < 0 ? "negative" : "positive";
@@ -1641,10 +1671,8 @@ class KaraguaLeafletMap extends HTMLElement {
       net < 0 ? `${net.toLocaleString("pt-BR")} ha` : `+${net.toLocaleString("pt-BR")} ha`;
     return `
       <div class="loss-period">
-        <div class="loss-period-years">${p.fromYear} → ${p.toYear}</div>
         <div class="loss-period-net ${netClass}">${netLabel} líquido</div>
         <div class="loss-period-detail">−${p.lossHa.toLocaleString("pt-BR")} ha perdidos · +${p.gainHa.toLocaleString("pt-BR")} ha ganhos</div>
-        <div class="loss-period-source">${p.source}</div>
       </div>
     `;
   }
@@ -1658,9 +1686,9 @@ class KaraguaLeafletMap extends HTMLElement {
   static _renderHistoryChart(years) {
     if (!years?.length) return `<div class="history-error">Sem dados pra essa área.</div>`;
     const w = 198;
-    const h = 108;
-    const padBottom = 16;
-    const padTop = 6;
+    const h = 130;
+    const padBottom = 17;
+    const padTop = 7;
     const maxHa = Math.max(...years.map((y) => y.areaHa), 1);
     const barGap = years.length > 15 ? 1 : 2;
     const barW = w / years.length;
