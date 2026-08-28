@@ -887,6 +887,26 @@ async function computeGmwExtentViewport(west, south, east, north, cols, rows, ye
   return { mangrove, areaHa };
 }
 
+// Mesma comparação pixel a pixel do computeGmwLossPeriod abaixo, mas pra
+// área VISÍVEL do mapa (sem filtro de município) e devolvendo a grade
+// célula a célula em vez de só o agregado em ha — é o que alimenta a
+// camada visual "Perda de manguezal" (mostra ONDE, não só quanto).
+// -1 = virou não-manguezal (perda), 1 = virou manguezal (ganho), 0 = igual
+// nos dois anos.
+async function computeGmwLossMask(west, south, east, north, cols, rows) {
+  const [fromMask, toMask] = await Promise.all([
+    computeGmwMaskRecent(west, south, east, north, cols, rows, 1996),
+    computeGmwMaskRecent(west, south, east, north, cols, rows, 2025),
+  ]);
+  const change = new Array(cols * rows);
+  for (let i = 0; i < change.length; i++) {
+    const was = fromMask[i] > 0;
+    const is = toMask[i] > 0;
+    change[i] = was && !is ? -1 : !was && is ? 1 : 0;
+  }
+  return change;
+}
+
 // ── Perda de manguezal (diferença entre dois anos) ─────────────────────────
 // Compara a máscara de dois anos pixel a pixel: era manguezal e deixou de
 // ser = perda; não era e passou a ser = ganho. Uma comparação só, 1996→2025,
@@ -986,6 +1006,29 @@ app.get("/mangrove-extent-gmw", async (req, res) => {
       year,
     );
     const data = { bbox: [west, south, east, north], cols, rows, mangrove, areaHa, year };
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// Camada visual de perda/ganho (1996→2025) na área VISÍVEL — mesmo padrão
+// de /mangrove-extent-gmw, mas devolvendo o diff célula a célula em vez de
+// uma máscara de 1 ano só. `change[i]`: -1 perda, 1 ganho, 0 sem mudança.
+app.get("/mangrove-loss-map", async (req, res) => {
+  const west = Number(req.query.west);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const north = Number(req.query.north);
+  if (![west, south, east, north].every(Number.isFinite)) {
+    return res.status(400).json({ error: "west, south, east, north são obrigatórios e numéricos" });
+  }
+  const cols = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.cols) || 128)));
+  const rows = Math.min(MANGROVE_GRID_MAX, Math.max(8, Math.round(Number(req.query.rows) || 128)));
+
+  try {
+    const change = await computeGmwLossMask(west, south, east, north, cols, rows);
+    const data = { bbox: [west, south, east, north], cols, rows, change };
     res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });

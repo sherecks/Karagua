@@ -26,6 +26,9 @@ class KaraguaLeafletMap extends HTMLElement {
     this._socLayer = null;
     this._socActive = false;
     this._socRequestId = 0;
+    this._lossMapLayer = null;
+    this._lossMapActive = false;
+    this._lossMapRequestId = 0;
     this._areaSelectActive = false;
     this._areaSelectFirstCorner = null;
     this._areaSelectRect = null;
@@ -48,6 +51,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._stopWindAnimation();
     if (this._map) {
       this._map.off("moveend zoomend", this._refreshGmwExtent, this);
+      this._map.off("moveend zoomend", this._refreshLossMap, this);
       this._map.off("moveend zoomend", this._refreshSoc, this);
       this._map.remove();
     }
@@ -345,7 +349,8 @@ class KaraguaLeafletMap extends HTMLElement {
         }
         .wind-canvas { pointer-events: none; }
         /* Mapa de calor de concentração (GMW): a densidade já vem calculada
-           em JS (_gmwDensity, tabela de somas) como cinza+alfa por célula —
+           em JS (_neighborhoodAverage, tabela de somas) como cinza+alfa por
+           célula —
            o blur aqui só amacia o serrilhado da grade (a densidade em si já
            é o gradiente, blur sozinho numa máscara binária não bastava: o
            miolo de qualquer mancha mais larga que o raio do blur saturava
@@ -363,6 +368,13 @@ class KaraguaLeafletMap extends HTMLElement {
         .soc-tint {
           filter: blur(3px);
         }
+        /* Perda/ganho de manguezal: mesma técnica do GMW acima (densidade
+           por vizinhança já calculada em JS, blur só amacia a grade) — só
+           que bicolor (coral = virou não-manguezal, verde = virou
+           manguezal) em vez de um gradiente de calor de uma cor só. */
+        .loss-map-tint {
+          filter: blur(3px);
+        }
         .layer-credit {
           display: block;
           font-size: 10px;
@@ -370,11 +382,35 @@ class KaraguaLeafletMap extends HTMLElement {
           margin: 2px 0 0 23px;
           line-height: 1.3;
         }
+        /* Legenda perda/ganho da nova camada — só aparece com o toggle
+           marcado (ver _initLossMapToggle), mesmo recuo dos créditos pra
+           alinhar embaixo do checkbox. */
+        .loss-legend {
+          display: flex;
+          gap: 12px;
+          margin: 1px 0 0 23px;
+        }
+        /* [hidden] tem a MESMA especificidade que .layer-credit/.loss-legend
+           acima (ambos 0,1,0) — sem isso, "display:flex"/"display:block"
+           delas ganha da regra padrão do navegador pro atributo hidden, e
+           o elemento continua ocupando espaço mesmo escondido. */
+        [hidden] { display: none !important; }
+        .loss-legend-item {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 10.5px;
+          color: #6B7B8D;
+        }
+        .loss-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+        .loss-dot-loss { background: #E85D4A; }
+        .loss-dot-gain { background: #27AE60; }
         /* O recuo de 23px acima alinha o crédito embaixo de um checkbox
            (Camadas) — #history-credit não tem checkbox do lado, esse
            recuo só roubava largura à toa e forçava quebra de linha mais
            cedo num texto que já é comprido. */
         #history-credit { margin-left: 0; margin-top: 1px; }
+        #area-select-btn { margin-top: 4px; }
         .layer-button {
           display: block;
           margin-top: 6px;
@@ -396,7 +432,7 @@ class KaraguaLeafletMap extends HTMLElement {
           border-color: #1A2332;
         }
         .gmw-year-row {
-          margin: 4px 0 0 23px;
+          margin: 2px 0 0 23px;
         }
         .gmw-year-row-top {
           display: flex;
@@ -449,7 +485,7 @@ class KaraguaLeafletMap extends HTMLElement {
         .gmw-year-ticks {
           display: flex;
           justify-content: space-between;
-          margin-top: 2px;
+          margin-top: 1px;
         }
         .gmw-year-ticks span { font-size: 9px; color: #A8A296; }
         .history-hint { font-size: 11px; color: #6B7B8D; margin: 0 0 2px; line-height: 1.3; }
@@ -647,10 +683,19 @@ class KaraguaLeafletMap extends HTMLElement {
                 </div>
                 <span class="layer-credit" id="gmw-extent-credit">Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m</span>
                 <label class="layer-toggle">
+                  <input type="checkbox" id="loss-map-toggle">
+                  <span>Perda de manguezal (1996→2025)</span>
+                </label>
+                <div class="loss-legend" id="loss-map-legend" hidden>
+                  <span class="loss-legend-item"><i class="loss-dot loss-dot-loss"></i>Perda</span>
+                  <span class="loss-legend-item"><i class="loss-dot loss-dot-gain"></i>Ganho</span>
+                </div>
+                <span class="layer-credit" id="loss-map-credit" hidden>Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m</span>
+                <label class="layer-toggle">
                   <input type="checkbox" id="soc-toggle">
                   <span>Carbono orgânico do solo</span>
                 </label>
-                <span class="layer-credit" id="soc-credit">Sanderman et al. 2018 (atualização 2023) · 30m</span>
+                <span class="layer-credit" id="soc-credit" hidden>Sanderman et al. 2018 (atualização 2023) · 30m</span>
                 <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
               </div>
             </div>
@@ -727,6 +772,9 @@ class KaraguaLeafletMap extends HTMLElement {
     const socPane = this._map.createPane("socPane");
     socPane.style.zIndex = 291;
     socPane.style.pointerEvents = "none";
+    const lossPane = this._map.createPane("lossPane");
+    lossPane.style.zIndex = 292;
+    lossPane.style.pointerEvents = "none";
     const windPane = this._map.createPane("windPane");
     windPane.style.zIndex = 350;
     windPane.style.pointerEvents = "none";
@@ -739,6 +787,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._initPointDetail();
     this._initWindToggle();
     this._initGmwExtentToggle();
+    this._initLossMapToggle();
     this._initSocToggle();
     this._initAreaSelectTool();
     this._initHistorySection();
@@ -1129,7 +1178,8 @@ class KaraguaLeafletMap extends HTMLElement {
   // do carbono, também faz o azul do tile se destacar do fundo); só volta
   // a cor quando os três desligarem.
   _updateBaseFilter() {
-    const active = this._windActive || this._gmwExtentActive || this._socActive;
+    const active =
+      this._windActive || this._gmwExtentActive || this._lossMapActive || this._socActive;
     this._map.getPane("tilePane").style.filter = active ? "grayscale(1) contrast(0.95)" : "";
   }
 
@@ -1364,7 +1414,7 @@ class KaraguaLeafletMap extends HTMLElement {
   // Timeseries) ────────────────────────────────────────────────────────────
   // Sentinel-2/Landsat a 10m. Passa pela nossa API (decodifica o GeoTIFF
   // categórico no servidor) e o resultado (máscara binária: é/não é
-  // manguezal) vira densidade local por vizinhança (_gmwDensity) pintada em
+  // manguezal) vira densidade local por vizinhança (_neighborhoodAverage) pintada em
   // canvas aqui no cliente — o filtro #concentration-heat (.gmw-heat-tint)
   // então converte essa densidade num gradiente de calor de verdade, não um
   // preenchimento sólido de uma cor só.
@@ -1456,7 +1506,7 @@ class KaraguaLeafletMap extends HTMLElement {
     // blur fica com o miolo inteiro saturado (sempre vermelho, sem gradiente).
     // A densidade calculada aqui já é o gradiente; o blur do CSS só amacia o
     // serrilhado da grade.
-    const density = KaraguaLeafletMap._gmwDensity(data.mangrove, data.cols, data.rows);
+    const density = KaraguaLeafletMap._neighborhoodAverage(data.mangrove, data.cols, data.rows);
 
     const canvas = document.createElement("canvas");
     canvas.width = data.cols;
@@ -1499,20 +1549,134 @@ class KaraguaLeafletMap extends HTMLElement {
     }
   }
 
+  // ── Perda de manguezal, ONDE (1996→2025) ────────────────────────────────
+  // Mesma ideia da camada de concentração acima — só que em vez de "tem
+  // manguezal aqui", a máscara de entrada é "essa célula perdeu" ou "essa
+  // célula ganhou" manguezal entre os dois anos (ver /mangrove-loss-map na
+  // API, computeGmwLossMask). Cada canal (perda/ganho) passa pela mesma
+  // média de vizinhança do GMW antes de pintar — sem isso ficaria só um
+  // pontilhado dos pixels que mudaram, sem o efeito de mancha contínua.
+  // Perda e ganho raramente se sobrepõem na mesma vizinhança; quando os
+  // dois aparecem na mesma célula, pinta a cor do canal com densidade
+  // maior ali.
+  _initLossMapToggle() {
+    const toggle = this.shadowRoot.getElementById("loss-map-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("change", () => {
+      const legend = this.shadowRoot.getElementById("loss-map-legend");
+      const credit = this.shadowRoot.getElementById("loss-map-credit");
+      if (legend) legend.hidden = !toggle.checked;
+      if (credit) credit.hidden = !toggle.checked;
+      void this._setLossMapVisible(toggle.checked);
+    });
+  }
+
+  async _setLossMapVisible(on) {
+    this._lossMapActive = on;
+    if (!on) {
+      this._map.off("moveend zoomend", this._refreshLossMap, this);
+      if (this._lossMapLayer) {
+        this._map.removeLayer(this._lossMapLayer);
+        this._lossMapLayer = null;
+      }
+      this._updateBaseFilter();
+      return;
+    }
+    this._map.on("moveend zoomend", this._refreshLossMap, this);
+    this._updateBaseFilter();
+    await this._refreshLossMap();
+  }
+
+  async _refreshLossMap() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (!apiUrl) return;
+
+    const b = this._map.getBounds();
+    const size = this._map.getSize();
+    const maxSide = 300;
+    const scale = Math.min(1, maxSide / Math.max(size.x, size.y));
+    const cols = Math.max(8, Math.round(size.x * scale));
+    const rows = Math.max(8, Math.round(size.y * scale));
+
+    const requestId = ++this._lossMapRequestId;
+    let data;
+    try {
+      const res = await fetch(
+        `${apiUrl.replace(/\/$/, "")}/mangrove-loss-map?west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}&cols=${cols}&rows=${rows}`,
+      );
+      const body = await res.json();
+      if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+      data = body.data;
+    } catch (e) {
+      console.warn("Perda de manguezal (mapa) indisponível:", e);
+      return;
+    }
+    if (requestId !== this._lossMapRequestId) return;
+
+    const lossMask = data.change.map((v) => (v < 0 ? 1 : 0));
+    const gainMask = data.change.map((v) => (v > 0 ? 1 : 0));
+    const dLoss = KaraguaLeafletMap._neighborhoodAverage(lossMask, data.cols, data.rows);
+    const dGain = KaraguaLeafletMap._neighborhoodAverage(gainMask, data.cols, data.rows);
+
+    const lossColor = [232, 93, 74]; // coral — mesma cor de #E85D4A
+    const gainColor = [39, 174, 96]; // positive — mesma cor de #27AE60
+    const canvas = document.createElement("canvas");
+    canvas.width = data.cols;
+    canvas.height = data.rows;
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(data.cols, data.rows);
+    for (let i = 0; i < dLoss.length; i++) {
+      const t = Math.max(dLoss[i], dGain[i]);
+      if (t <= 0) continue;
+      const color = dLoss[i] >= dGain[i] ? lossColor : gainColor;
+      const o = i * 4;
+      img.data[o] = color[0];
+      img.data[o + 1] = color[1];
+      img.data[o + 2] = color[2];
+      img.data[o + 3] = Math.min(255, Math.round(25 + t * 230));
+    }
+    ctx.putImageData(img, 0, 0);
+    const url = canvas.toDataURL("image/png");
+
+    const bounds = [
+      [b.getSouth(), b.getWest()],
+      [b.getNorth(), b.getEast()],
+    ];
+    if (this._lossMapLayer) {
+      this._lossMapLayer.setUrl(url);
+      this._lossMapLayer.setBounds(bounds);
+    } else {
+      this._lossMapLayer = L.imageOverlay(url, bounds, {
+        pane: "lossPane",
+        className: "loss-map-tint",
+        opacity: 0.85,
+        interactive: false,
+      }).addTo(this._map);
+    }
+  }
+
   // ── Carbono orgânico do solo (Sanderman et al. 2018, atualização 2023) ───
   // Mesmo padrão da camada de concentração acima (fetch na área visível,
-  // redesenha em moveend/zoomend), mas o valor já vem contínuo por célula
-  // (t C/ha) — não precisa da densidade por vizinhança do GMW, só normaliza
-  // direto. Referência de cor fixa (não o mín/máx da área visível): senão a
-  // mesma cor significaria coisas diferentes dependendo de pra onde você
-  // arrastou o mapa. 600 t/ha cobre com folga a faixa observada aqui (~50-
-  // 480) e a faixa publicada no paper original (86-729 Mg C/ha).
+  // redesenha em moveend/zoomend). O valor já vem contínuo por célula (t
+  // C/ha), mas continua precisando da MESMA média de vizinhança que o GMW
+  // (_neighborhoodAverage) antes de pintar — testado: sem isso, célula a
+  // célula pinta direto o valor cru e o blur de 3px do CSS sozinho não
+  // escondia os quadrados da grade (visível principalmente com zoom, onde
+  // cada célula vira muitos pixels de tela). Referência de cor fixa (não o
+  // mín/máx da área visível): senão a mesma cor significaria coisas
+  // diferentes dependendo de pra onde você arrastou o mapa. 600 t/ha cobre
+  // com folga a faixa observada aqui (~50-480) e a faixa publicada no paper
+  // original (86-729 Mg C/ha).
   static _SOC_COLOR_MAX_THA = 600;
 
   _initSocToggle() {
     const toggle = this.shadowRoot.getElementById("soc-toggle");
     if (!toggle) return;
-    toggle.addEventListener("change", () => void this._setSocVisible(toggle.checked));
+    toggle.addEventListener("change", () => {
+      const credit = this.shadowRoot.getElementById("soc-credit");
+      if (credit) credit.hidden = !toggle.checked;
+      void this._setSocVisible(toggle.checked);
+    });
   }
 
   async _setSocVisible(on) {
@@ -1558,6 +1722,7 @@ class KaraguaLeafletMap extends HTMLElement {
     if (requestId !== this._socRequestId) return;
 
     const colorMax = KaraguaLeafletMap._SOC_COLOR_MAX_THA;
+    const smoothTha = KaraguaLeafletMap._neighborhoodAverage(data.socTha, data.cols, data.rows);
     // Azul claro (pouco carbono) → azul escuro/saturado (muito carbono) —
     // mesma lógica de intensidade `t` que antes virava cinza, agora
     // interpolada entre duas cores fixas em vez de R=G=B.
@@ -1568,8 +1733,8 @@ class KaraguaLeafletMap extends HTMLElement {
     canvas.height = data.rows;
     const ctx = canvas.getContext("2d");
     const img = ctx.createImageData(data.cols, data.rows);
-    for (let i = 0; i < data.socTha.length; i++) {
-      const tha = data.socTha[i];
+    for (let i = 0; i < smoothTha.length; i++) {
+      const tha = smoothTha[i];
       if (tha <= 0) continue;
       const t = Math.min(1, tha / colorMax);
       const o = i * 4;
@@ -1717,25 +1882,28 @@ class KaraguaLeafletMap extends HTMLElement {
     return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" class="history-chart">${bars}</svg>`;
   }
 
-  // Densidade local por tabela de somas (summed-area table): soma numa janela
-  // qualquer em O(1) depois de um pré-cálculo O(n), então dá pra fazer a
-  // "vizinhança" de cada célula sem reprocessar tudo por célula (importante:
-  // roda a cada moveend/zoomend, grade de até 300×300). Raio fixo em células
-  // (não em metros) — a grade já encolhe/cresce com o zoom, então o raio
-  // acompanha a escala visível automaticamente.
-  static _GMW_DENSITY_RADIUS = 5;
-  static _gmwDensity(mask, cols, rows) {
-    const radius = KaraguaLeafletMap._GMW_DENSITY_RADIUS;
+  // Média de vizinhança por tabela de somas (summed-area table): soma numa
+  // janela qualquer em O(1) depois de um pré-cálculo O(n), então dá pra
+  // fazer a "vizinhança" de cada célula sem reprocessar tudo por célula
+  // (importante: roda a cada moveend/zoomend, grade de até 300×300). Raio
+  // fixo em células (não em metros) — a grade já encolhe/cresce com o zoom,
+  // então o raio acompanha a escala visível automaticamente.
+  // Compartilhada entre GMW (densidade de uma máscara 0/1) e SOC (média de
+  // um valor contínuo, t C/ha) — a matemática é a mesma média de janela nos
+  // dois casos, só muda o que entra no array.
+  static _SMOOTH_RADIUS = 5;
+  static _neighborhoodAverage(values, cols, rows) {
+    const radius = KaraguaLeafletMap._SMOOTH_RADIUS;
     const stride = cols + 1;
     const sum = new Float64Array(stride * (rows + 1));
     for (let r = 0; r < rows; r++) {
       let rowSum = 0;
       for (let c = 0; c < cols; c++) {
-        rowSum += mask[r * cols + c];
+        rowSum += values[r * cols + c];
         sum[(r + 1) * stride + (c + 1)] = sum[r * stride + (c + 1)] + rowSum;
       }
     }
-    const density = new Float32Array(cols * rows);
+    const avg = new Float32Array(cols * rows);
     for (let r = 0; r < rows; r++) {
       const r0 = Math.max(0, r - radius);
       const r1 = Math.min(rows - 1, r + radius);
@@ -1748,10 +1916,10 @@ class KaraguaLeafletMap extends HTMLElement {
           sum[(r1 + 1) * stride + c0] +
           sum[r0 * stride + c0];
         const area = (r1 - r0 + 1) * (c1 - c0 + 1);
-        density[r * cols + c] = total / area;
+        avg[r * cols + c] = total / area;
       }
     }
-    return density;
+    return avg;
   }
 
   // ── Recorte de área para o terreno 3D ─────────────────────────────────────
