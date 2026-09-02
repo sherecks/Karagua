@@ -1636,8 +1636,9 @@ class KaraguaLeafletMap extends HTMLElement {
       smoothRadius,
     );
 
-    const lossColor = [232, 93, 74]; // coral — mesma cor de #E85D4A
-    const gainColor = [39, 174, 96]; // positive — mesma cor de #27AE60
+    // Gradiente de 5 pontos por canal (_lossColor coral, _gainColor verde)
+    // — antes era cor sólida com só a opacidade variando, o que deixava
+    // qualquer densidade abaixo do máximo parecendo um véu quase sem cor.
     const canvas = document.createElement("canvas");
     canvas.width = data.cols;
     canvas.height = data.rows;
@@ -1646,7 +1647,10 @@ class KaraguaLeafletMap extends HTMLElement {
     for (let i = 0; i < dLoss.length; i++) {
       const t = Math.max(dLoss[i], dGain[i]);
       if (t <= 0) continue;
-      const color = dLoss[i] >= dGain[i] ? lossColor : gainColor;
+      const color =
+        dLoss[i] >= dGain[i]
+          ? KaraguaLeafletMap._lossColor(dLoss[i])
+          : KaraguaLeafletMap._gainColor(dGain[i]);
       const o = i * 4;
       img.data[o] = color[0];
       img.data[o + 1] = color[1];
@@ -1755,10 +1759,8 @@ class KaraguaLeafletMap extends HTMLElement {
       smoothRadius,
     );
     // Azul claro (pouco carbono) → azul escuro/saturado (muito carbono) —
-    // mesma lógica de intensidade `t` que antes virava cinza, agora
-    // interpolada entre duas cores fixas em vez de R=G=B.
-    const socLow = [199, 224, 255];
-    const socHigh = [13, 42, 110];
+    // gradiente de 5 pontos (_socColor), mesma técnica do GMW (_heatColor)
+    // em vez da interpolação linear entre 2 cores de antes.
     const canvas = document.createElement("canvas");
     canvas.width = data.cols;
     canvas.height = data.rows;
@@ -1769,9 +1771,10 @@ class KaraguaLeafletMap extends HTMLElement {
       if (tha <= 0) continue;
       const t = Math.min(1, tha / colorMax);
       const o = i * 4;
-      img.data[o] = Math.round(socLow[0] + (socHigh[0] - socLow[0]) * t);
-      img.data[o + 1] = Math.round(socLow[1] + (socHigh[1] - socLow[1]) * t);
-      img.data[o + 2] = Math.round(socLow[2] + (socHigh[2] - socLow[2]) * t);
+      const [r, g, bl] = KaraguaLeafletMap._socColor(t);
+      img.data[o] = r;
+      img.data[o + 1] = g;
+      img.data[o + 2] = bl;
       img.data[o + 3] = Math.min(255, Math.round(40 + t * 215));
     }
     ctx.putImageData(img, 0, 0);
@@ -1939,6 +1942,49 @@ class KaraguaLeafletMap extends HTMLElement {
       Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._HEAT_TABLE_R, t) * 255),
       Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._HEAT_TABLE_G, t) * 255),
       Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._HEAT_TABLE_B, t) * 255),
+    ];
+  }
+
+  // SOC e Perda/Ganho antes só interpolavam entre 2 cores (ou, no caso de
+  // Perda/Ganho, nem isso — cor sólida fixa, só a opacidade variava com a
+  // densidade). Contra o gradiente de 6 pontos do GMW acima, ficavam sem
+  // definição: valor médio virava "um azul qualquer" ou "aquela cor meio
+  // transparente", sem o salto de matiz que faz o olho separar áreas de
+  // densidade diferente. As tabelas abaixo têm 5 pontos cada (já em 0-255,
+  // não 0-1 — _heatTableLookup não liga pra escala) mantendo a cor clara e
+  // a escura que já estavam em uso (não muda a identidade visual), só
+  // preenchendo o meio com passos de matiz de verdade em vez de uma
+  // interpolação linear direta entre as duas pontas.
+  static _SOC_TABLE_R = [199, 110, 49, 20, 13];
+  static _SOC_TABLE_G = [224, 180, 130, 75, 42];
+  static _SOC_TABLE_B = [255, 235, 206, 150, 110];
+  static _socColor(t) {
+    return [
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._SOC_TABLE_R, t)),
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._SOC_TABLE_G, t)),
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._SOC_TABLE_B, t)),
+    ];
+  }
+
+  static _LOSS_TABLE_R = [255, 245, 232, 199, 168];
+  static _LOSS_TABLE_G = [219, 150, 93, 64, 45];
+  static _LOSS_TABLE_B = [209, 130, 74, 51, 30];
+  static _lossColor(t) {
+    return [
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._LOSS_TABLE_R, t)),
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._LOSS_TABLE_G, t)),
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._LOSS_TABLE_B, t)),
+    ];
+  }
+
+  static _GAIN_TABLE_R = [204, 110, 39, 27, 20];
+  static _GAIN_TABLE_G = [238, 200, 174, 140, 110];
+  static _GAIN_TABLE_B = [219, 150, 96, 75, 55];
+  static _gainColor(t) {
+    return [
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._GAIN_TABLE_R, t)),
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._GAIN_TABLE_G, t)),
+      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._GAIN_TABLE_B, t)),
     ];
   }
 
