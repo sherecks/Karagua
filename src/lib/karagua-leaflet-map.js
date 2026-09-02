@@ -357,20 +357,10 @@ class KaraguaLeafletMap extends HTMLElement {
         .gmw-heat-tint {
           filter: blur(3px);
         }
-        /* Carbono orgânico do solo: mesma ideia acima, paleta azul (cor já
-           vem pronta do canvas em _refreshSoc) — diferencia visualmente as
-           camadas de calor quando ligadas junto (a paleta do GMW confundiria
-           qual é qual). Mesmo raio de blur (3px). */
-        .soc-tint {
-          filter: blur(3px);
-        }
-        /* Perda/ganho de manguezal: mesma técnica do GMW acima (densidade
-           por vizinhança já calculada em JS, blur só amacia a grade) — só
-           que bicolor (coral = virou não-manguezal, verde = virou
-           manguezal) em vez de um gradiente de calor de uma cor só. */
-        .loss-map-tint {
-          filter: blur(3px);
-        }
+        /* Carbono orgânico do solo e Perda/Ganho: sem regra de blur aqui —
+           as duas viraram polígono vetorial (contorno de marching squares
+           sobre a máscara 0/1), não mais raster+filter. Ver
+           _addClassPolygons/_maskToLatLngRings. */
         .layer-credit {
           display: block;
           font-size: 10px;
@@ -380,27 +370,32 @@ class KaraguaLeafletMap extends HTMLElement {
         }
         /* Legenda perda/ganho da nova camada — só aparece com o toggle
            marcado (ver _initLossMapToggle), mesmo recuo dos créditos pra
-           alinhar embaixo do checkbox. */
-        .loss-legend {
+           alinhar embaixo do checkbox. Compartilhada entre Perda/Ganho (2
+           itens fixos no HTML) e SOC (5 itens, montados em JS — ver
+           _refreshSoc/_buildSocLegend — porque a cor de cada faixa vem da
+           mesma tabela usada pra pintar o polígono, não faz sentido
+           duplicar esses tons à mão aqui). */
+        .class-legend {
           display: flex;
-          gap: 12px;
+          flex-wrap: wrap;
+          gap: 6px 12px;
           margin: 1px 0 0 23px;
         }
-        /* [hidden] tem a MESMA especificidade que .layer-credit/.loss-legend
+        /* [hidden] tem a MESMA especificidade que .layer-credit/.class-legend
            acima (ambos 0,1,0) — sem isso, "display:flex"/"display:block"
            delas ganha da regra padrão do navegador pro atributo hidden, e
            o elemento continua ocupando espaço mesmo escondido. */
         [hidden] { display: none !important; }
-        .loss-legend-item {
+        .class-legend-item {
           display: flex;
           align-items: center;
           gap: 5px;
           font-size: 10.5px;
           color: #6B7B8D;
         }
-        .loss-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-        .loss-dot-loss { background: #E85D4A; }
-        .loss-dot-gain { background: #27AE60; }
+        .class-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+        .class-dot-loss { background: #E85D4A; }
+        .class-dot-gain { background: #27AE60; }
         /* O recuo de 23px acima alinha o crédito embaixo de um checkbox
            (Camadas) — #history-credit não tem checkbox do lado, esse
            recuo só roubava largura à toa e forçava quebra de linha mais
@@ -673,15 +668,16 @@ class KaraguaLeafletMap extends HTMLElement {
                   <input type="checkbox" id="loss-map-toggle">
                   <span>Perda de manguezal (1996→2025)</span>
                 </label>
-                <div class="loss-legend" id="loss-map-legend" hidden>
-                  <span class="loss-legend-item"><i class="loss-dot loss-dot-loss"></i>Perda</span>
-                  <span class="loss-legend-item"><i class="loss-dot loss-dot-gain"></i>Ganho</span>
+                <div class="class-legend" id="loss-map-legend" hidden>
+                  <span class="class-legend-item"><i class="class-dot class-dot-loss"></i>Perda</span>
+                  <span class="class-legend-item"><i class="class-dot class-dot-gain"></i>Ganho</span>
                 </div>
                 <span class="layer-credit" id="loss-map-credit" hidden>Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m</span>
                 <label class="layer-toggle">
                   <input type="checkbox" id="soc-toggle">
                   <span>Carbono orgânico do solo</span>
                 </label>
+                <div class="class-legend" id="soc-legend" hidden></div>
                 <span class="layer-credit" id="soc-credit" hidden>Sanderman et al. 2018 (atualização 2023) · 30m</span>
                 <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
               </div>
@@ -1617,89 +1613,70 @@ class KaraguaLeafletMap extends HTMLElement {
     const gainMaskRaw = data.change.map((v) => (v > 0 ? 1 : 0));
     const lossMask = KaraguaLeafletMap._denoiseSparseMask(lossMaskRaw, data.cols, data.rows);
     const gainMask = KaraguaLeafletMap._denoiseSparseMask(gainMaskRaw, data.cols, data.rows);
-    const smoothRadius = KaraguaLeafletMap._adaptiveSmoothRadius(
-      b.getWest(),
-      b.getSouth(),
-      b.getEast(),
-      b.getNorth(),
-      data.cols,
-      data.rows,
-      KaraguaLeafletMap._LOSS_SMOOTH_TARGET_METERS,
-    );
-    const dLoss = KaraguaLeafletMap._neighborhoodAverage(
+
+    // Contorno vetorial (marching squares) em vez de raster+blur: perda/
+    // ganho é categórico (mudou ou não mudou), não densidade contínua —
+    // um polígono com borda nítida representa o dado com mais fidelidade
+    // do que uma nuvem borrada. O denoise acima já tirou o ruído de pixel
+    // isolado antes de contornar.
+    if (this._lossMapLayer) this._map.removeLayer(this._lossMapLayer);
+    this._lossMapLayer = L.layerGroup([], { pane: "lossPane" }).addTo(this._map);
+    KaraguaLeafletMap._addClassPolygons(
+      this._lossMapLayer,
       lossMask,
       data.cols,
       data.rows,
-      smoothRadius,
+      b,
+      "lossPane",
+      KaraguaLeafletMap._lossColor(0.5),
+      KaraguaLeafletMap._lossColor(1),
     );
-    const dGain = KaraguaLeafletMap._neighborhoodAverage(
+    KaraguaLeafletMap._addClassPolygons(
+      this._lossMapLayer,
       gainMask,
       data.cols,
       data.rows,
-      smoothRadius,
+      b,
+      "lossPane",
+      KaraguaLeafletMap._gainColor(0.5),
+      KaraguaLeafletMap._gainColor(1),
     );
-
-    // Gradiente de 5 pontos por canal (_lossColor coral, _gainColor verde)
-    // — antes era cor sólida com só a opacidade variando, o que deixava
-    // qualquer densidade abaixo do máximo parecendo um véu quase sem cor.
-    const canvas = document.createElement("canvas");
-    canvas.width = data.cols;
-    canvas.height = data.rows;
-    const ctx = canvas.getContext("2d");
-    const img = ctx.createImageData(data.cols, data.rows);
-    for (let i = 0; i < dLoss.length; i++) {
-      const t = Math.max(dLoss[i], dGain[i]);
-      if (t <= 0) continue;
-      const color =
-        dLoss[i] >= dGain[i]
-          ? KaraguaLeafletMap._lossColor(dLoss[i])
-          : KaraguaLeafletMap._gainColor(dGain[i]);
-      const o = i * 4;
-      img.data[o] = color[0];
-      img.data[o + 1] = color[1];
-      img.data[o + 2] = color[2];
-      img.data[o + 3] = Math.min(255, Math.round(25 + t * 230));
-    }
-    ctx.putImageData(img, 0, 0);
-    const url = canvas.toDataURL("image/png");
-
-    const bounds = [
-      [b.getSouth(), b.getWest()],
-      [b.getNorth(), b.getEast()],
-    ];
-    if (this._lossMapLayer) {
-      this._lossMapLayer.setUrl(url);
-      this._lossMapLayer.setBounds(bounds);
-    } else {
-      this._lossMapLayer = L.imageOverlay(url, bounds, {
-        pane: "lossPane",
-        className: "loss-map-tint",
-        opacity: 0.85,
-        interactive: false,
-      }).addTo(this._map);
-    }
   }
 
   // ── Carbono orgânico do solo (Sanderman et al. 2018, atualização 2023) ───
   // Mesmo padrão da camada de concentração acima (fetch na área visível,
-  // redesenha em moveend/zoomend). O valor já vem contínuo por célula (t
-  // C/ha), mas continua precisando da MESMA média de vizinhança que o GMW
-  // (_neighborhoodAverage) antes de pintar — testado: sem isso, célula a
-  // célula pinta direto o valor cru e o blur de 3px do CSS sozinho não
-  // escondia os quadrados da grade (visível principalmente com zoom, onde
-  // cada célula vira muitos pixels de tela). Referência de cor fixa (não o
-  // mín/máx da área visível): senão a mesma cor significaria coisas
-  // diferentes dependendo de pra onde você arrastou o mapa. 600 t/ha cobre
-  // com folga a faixa observada aqui (~50-480) e a faixa publicada no paper
-  // original (86-729 Mg C/ha).
+  // redesenha em moveend/zoomend), mas em 5 faixas fixas coropléticas (ver
+  // _SOC_BANDS) em vez de gradiente contínuo — 600 t/ha cobre com folga a
+  // faixa observada aqui (~50-480) e a faixa publicada no paper original
+  // (86-729 Mg C/ha), dividida em 5 fatias de 120 t/ha cada.
   static _SOC_COLOR_MAX_THA = 600;
+  static _SOC_BANDS = Array.from({ length: 5 }, (_, i) => {
+    const step = KaraguaLeafletMap._SOC_COLOR_MAX_THA / 5;
+    return [i * step, i === 4 ? Infinity : (i + 1) * step];
+  });
 
   _initSocToggle() {
     const toggle = this.shadowRoot.getElementById("soc-toggle");
     if (!toggle) return;
+    // Cor de cada faixa vem da mesma _socColor usada pra pintar os
+    // polígonos — monta uma vez aqui (não muda entre refreshes) em vez de
+    // hardcodar os tons à mão num lugar separado, que dessincronizaria se
+    // a tabela de cor mudar.
+    const legend = this.shadowRoot.getElementById("soc-legend");
+    if (legend) {
+      legend.innerHTML = KaraguaLeafletMap._SOC_BANDS
+        .map(([lo, hi], i) => {
+          const centerT = (i + 0.5) / KaraguaLeafletMap._SOC_BANDS.length;
+          const [r, g, bl] = KaraguaLeafletMap._socColor(centerT);
+          const label = hi === Infinity ? `${lo}+` : `${lo}-${hi}`;
+          return `<span class="class-legend-item"><i class="class-dot" style="background:rgb(${r},${g},${bl})"></i>${label}</span>`;
+        })
+        .join("");
+    }
     toggle.addEventListener("change", () => {
       const credit = this.shadowRoot.getElementById("soc-credit");
       if (credit) credit.hidden = !toggle.checked;
+      if (legend) legend.hidden = !toggle.checked;
       void this._setSocVisible(toggle.checked);
     });
   }
@@ -1746,58 +1723,32 @@ class KaraguaLeafletMap extends HTMLElement {
     }
     if (requestId !== this._socRequestId) return;
 
-    const colorMax = KaraguaLeafletMap._SOC_COLOR_MAX_THA;
-    const smoothRadius = KaraguaLeafletMap._adaptiveSmoothRadius(
-      b.getWest(),
-      b.getSouth(),
-      b.getEast(),
-      b.getNorth(),
-      data.cols,
-      data.rows,
-      KaraguaLeafletMap._SOC_SMOOTH_TARGET_METERS,
-    );
-    const smoothTha = KaraguaLeafletMap._neighborhoodAverage(
-      data.socTha,
-      data.cols,
-      data.rows,
-      smoothRadius,
-    );
-    // Azul claro (pouco carbono) → azul escuro/saturado (muito carbono) —
-    // gradiente de 5 pontos (_socColor), mesma técnica do GMW (_heatColor)
-    // em vez da interpolação linear entre 2 cores de antes.
-    const canvas = document.createElement("canvas");
-    canvas.width = data.cols;
-    canvas.height = data.rows;
-    const ctx = canvas.getContext("2d");
-    const img = ctx.createImageData(data.cols, data.rows);
-    for (let i = 0; i < smoothTha.length; i++) {
-      const tha = smoothTha[i];
-      if (tha <= 0) continue;
-      const t = Math.min(1, tha / colorMax);
-      const o = i * 4;
-      const [r, g, bl] = KaraguaLeafletMap._socColor(t);
-      img.data[o] = r;
-      img.data[o + 1] = g;
-      img.data[o + 2] = bl;
-      img.data[o + 3] = Math.min(255, Math.round(40 + t * 215));
-    }
-    ctx.putImageData(img, 0, 0);
-    const url = canvas.toDataURL("image/png");
-
-    const bounds = [
-      [b.getSouth(), b.getWest()],
-      [b.getNorth(), b.getEast()],
-    ];
-    if (this._socLayer) {
-      this._socLayer.setUrl(url);
-      this._socLayer.setBounds(bounds);
-    } else {
-      this._socLayer = L.imageOverlay(url, bounds, {
-        pane: "socPane",
-        className: "soc-tint",
-        opacity: 0.85,
-        interactive: false,
-      }).addTo(this._map);
+    // 5 faixas fixas (coroplético) em vez de gradiente contínuo borrado —
+    // carbono no solo é contínuo de verdade, mas a técnica cartográfica
+    // padrão pra mostrar isso com fronteira nítida é justamente essa:
+    // faixas discretas, cada uma com cor chapada e contorno definido, não
+    // um degradê suave. Faixas fixas (não min/max da área visível) pelo
+    // mesmo motivo de sempre: a mesma cor não pode significar coisas
+    // diferentes dependendo de pra onde você arrastou o mapa.
+    if (this._socLayer) this._map.removeLayer(this._socLayer);
+    this._socLayer = L.layerGroup([], { pane: "socPane" }).addTo(this._map);
+    for (let band = 0; band < KaraguaLeafletMap._SOC_BANDS.length; band++) {
+      const [lo, hi] = KaraguaLeafletMap._SOC_BANDS[band];
+      // tha=0 é "sem manguezal mapeado aqui" (nodata), não "0-120 t/ha" —
+      // sem o `tha > 0` a primeira faixa engolia todo o fundo sem dado.
+      const bandMaskRaw = data.socTha.map((tha) => (tha > 0 && tha >= lo && tha < hi ? 1 : 0));
+      const bandMask = KaraguaLeafletMap._denoiseSparseMask(bandMaskRaw, data.cols, data.rows);
+      const centerT = (band + 0.5) / KaraguaLeafletMap._SOC_BANDS.length;
+      KaraguaLeafletMap._addClassPolygons(
+        this._socLayer,
+        bandMask,
+        data.cols,
+        data.rows,
+        b,
+        "socPane",
+        KaraguaLeafletMap._socColor(centerT),
+        KaraguaLeafletMap._socColor(Math.min(1, centerT + 0.3)),
+      );
     }
 
     const credit = this.shadowRoot.getElementById("soc-credit");
@@ -2001,20 +1952,6 @@ class KaraguaLeafletMap extends HTMLElement {
   // correspondiam a ~50m reais; agora isso vira o alvo em vez do número
   // de células em si.
   static _SMOOTH_TARGET_METERS = 50;
-  // SOC e Perda/Ganho precisam de mais suavização que o GMW pra ficar com
-  // acabamento parecido — não é capricho, é limitação real do dado (ver
-  // análise nos comentários de _refreshSoc/_refreshLossMap): SOC vem de
-  // uma fonte 3x mais grossa (30m vs 10m do GMW), então usa um alvo na
-  // mesma proporção (30m × 5 ≈ 150m, mesma razão alvo/resolução do GMW:
-  // 50m × 5 = 10m). Perda/Ganho tem a MESMA resolução do GMW (reusa a
-  // fonte dele), mas é a diferença entre duas classificações independentes
-  // — amplifica ruído de classificação em pixels isolados na franja, que
-  // vira "sal e pimenta" espalhado em vez de um sinal contíguo. Um alvo
-  // maior (90m) dá mais amostras pra diluir esse ruído; o filtro de
-  // suporte mínimo em _denoiseSparseMask cuida da outra metade do
-  // problema (remove os pixels isolados antes mesmo de suavizar).
-  static _SOC_SMOOTH_TARGET_METERS = 150;
-  static _LOSS_SMOOTH_TARGET_METERS = 90;
   static _METERS_PER_DEGREE_LAT = 111_320;
 
   // Converte o alvo em metros pra um raio em células pra essa grade
@@ -2058,6 +1995,157 @@ class KaraguaLeafletMap extends HTMLElement {
     const localDensity = KaraguaLeafletMap._neighborhoodAverage(mask, cols, rows, 1);
     const threshold = minSupport / 9;
     return mask.map((v, i) => (v > 0 && localDensity[i] >= threshold ? v : 0));
+  }
+
+  // ── Contorno vetorial (marching squares) — Perda/Ganho e SOC ───────────
+  // Em vez de pintar densidade contínua num canvas e borrar (GMW continua
+  // assim, faz sentido pra densidade de vizinhança), essas duas camadas
+  // desenham a fronteira exata de uma máscara 0/1 como polígono do
+  // Leaflet: sem blur, sem serrilhado de imagem esticada, a borda é
+  // matematicamente a fronteira real da célula. Algoritmo padrão de
+  // marching squares (16 casos por bloco 2×2 de células, casos-sela 5 e
+  // 10 resolvidos separando os dois cantos) + costura dos segmentos
+  // soltos em anéis fechados.
+  static _MARCHING_SQUARES_CASES = {
+    1: [["W", "S"]],
+    2: [["S", "E"]],
+    3: [["W", "E"]],
+    4: [["N", "E"]],
+    5: [
+      ["W", "N"],
+      ["S", "E"],
+    ],
+    6: [["N", "S"]],
+    7: [["W", "N"]],
+    8: [["W", "N"]],
+    9: [["N", "S"]],
+    10: [
+      ["W", "S"],
+      ["N", "E"],
+    ],
+    11: [["N", "E"]],
+    12: [["W", "E"]],
+    13: [["S", "E"]],
+    14: [["W", "S"]],
+  };
+  static _marchingSquaresEdgePoint(label, r, c) {
+    switch (label) {
+      case "N":
+        return [r, c + 0.5];
+      case "S":
+        return [r + 1, c + 0.5];
+      case "W":
+        return [r + 0.5, c];
+      default:
+        return [r + 0.5, c + 1]; // "E"
+    }
+  }
+  // `at` trata qualquer célula fora da grade como 0 (borda virtual) — sem
+  // isso, uma classe que cobre até a borda do viewport (comum: a mancha
+  // real continua além do que foi buscado) nunca fecha contorno nenhum
+  // ali, porque o algoritmo só enxerga transição 1→0 DENTRO da grade. O
+  // laço por isso também varre 1 bloco a mais em cada lado (`-1` até
+  // `rows`/`cols`) — é por isso que o polígono final pode passar meio
+  // meio-passo de célula além do bbox pedido nesses casos, o que é
+  // preferível a um corte reto artificial exatamente na borda do fetch.
+  static _marchingSquaresSegments(mask, cols, rows) {
+    const at = (r, c) => {
+      if (r < 0 || r >= rows || c < 0 || c >= cols) return 0;
+      return mask[r * cols + c] > 0 ? 1 : 0;
+    };
+    const segments = [];
+    for (let r = -1; r < rows; r++) {
+      for (let c = -1; c < cols; c++) {
+        const caseIndex = at(r, c) * 8 + at(r, c + 1) * 4 + at(r + 1, c + 1) * 2 + at(r + 1, c) * 1;
+        const pairs = KaraguaLeafletMap._MARCHING_SQUARES_CASES[caseIndex];
+        if (!pairs) continue;
+        for (const [a, bLabel] of pairs) {
+          segments.push([
+            KaraguaLeafletMap._marchingSquaresEdgePoint(a, r, c),
+            KaraguaLeafletMap._marchingSquaresEdgePoint(bLabel, r, c),
+          ]);
+        }
+      }
+    }
+    return segments;
+  }
+  // Todo ponto de segmento cai exatamente numa aresta de célula (metade
+  // inteira) — multiplicar por 2 vira inteiro, então a chave é exata, sem
+  // problema de comparação de float.
+  static _marchingSquaresPointKey(p) {
+    return `${Math.round(p[0] * 2)}_${Math.round(p[1] * 2)}`;
+  }
+  static _stitchContourRings(segments) {
+    const adjacency = new Map();
+    const addAdjacency = (key, segIndex, otherPoint) => {
+      if (!adjacency.has(key)) adjacency.set(key, []);
+      adjacency.get(key).push({ segIndex, otherPoint });
+    };
+    segments.forEach(([a, bPoint], i) => {
+      addAdjacency(KaraguaLeafletMap._marchingSquaresPointKey(a), i, bPoint);
+      addAdjacency(KaraguaLeafletMap._marchingSquaresPointKey(bPoint), i, a);
+    });
+
+    const used = Array.from({ length: segments.length }, () => false);
+    const rings = [];
+    for (let i = 0; i < segments.length; i++) {
+      if (used[i]) continue;
+      used[i] = true;
+      const ring = [segments[i][0], segments[i][1]];
+      const startKey = KaraguaLeafletMap._marchingSquaresPointKey(segments[i][0]);
+      let currentKey = KaraguaLeafletMap._marchingSquaresPointKey(segments[i][1]);
+      // Grade finita nunca tem mais segmentos que células — usar isso como
+      // teto evita loop infinito se algum caso deixar uma cadeia aberta.
+      for (let guard = 0; guard < segments.length && currentKey !== startKey; guard++) {
+        const candidates = adjacency.get(currentKey) || [];
+        const next = candidates.find((cand) => !used[cand.segIndex]);
+        if (!next) break;
+        used[next.segIndex] = true;
+        ring.push(next.otherPoint);
+        currentKey = KaraguaLeafletMap._marchingSquaresPointKey(next.otherPoint);
+      }
+      if (ring.length > 2) rings.push(ring);
+    }
+    return rings;
+  }
+  // Junta as duas etapas acima + converte de coordenada de grade (linear
+  // em [0, rows-1]/[0, cols-1], mesma convenção usada no resto do
+  // arquivo) pra [lat, lng]. Sem anel = célula não tem nenhuma região
+  // dessa classe na área visível.
+  static _maskToLatLngRings(mask, cols, rows, west, south, east, north) {
+    const segments = KaraguaLeafletMap._marchingSquaresSegments(mask, cols, rows);
+    if (!segments.length) return [];
+    const rings = KaraguaLeafletMap._stitchContourRings(segments);
+    return rings.map((ring) =>
+      ring.map(([r, c]) => [
+        north - (r / (rows - 1)) * (north - south),
+        west + (c / (cols - 1)) * (east - west),
+      ]),
+    );
+  }
+  // Constrói o(s) polígono(s) de uma classe (uma faixa do SOC, ou perda,
+  // ou ganho) e adiciona ao layerGroup — usado por _refreshLossMap e
+  // _refreshSoc. `bounds` é o retorno de `map.getBounds()`.
+  static _addClassPolygons(layerGroup, mask, cols, rows, bounds, paneName, fillRgb, strokeRgb) {
+    const rings = KaraguaLeafletMap._maskToLatLngRings(
+      mask,
+      cols,
+      rows,
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth(),
+    );
+    if (!rings.length) return;
+    L.polygon(rings, {
+      pane: paneName,
+      color: `rgb(${strokeRgb.join(",")})`,
+      weight: 1.5,
+      fillColor: `rgb(${fillRgb.join(",")})`,
+      fillOpacity: 0.45,
+      opacity: 0.9,
+      interactive: false,
+    }).addTo(layerGroup);
   }
 
   // Média de vizinhança por tabela de somas (summed-area table): soma numa
