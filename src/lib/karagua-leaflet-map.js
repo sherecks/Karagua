@@ -1613,8 +1613,10 @@ class KaraguaLeafletMap extends HTMLElement {
     }
     if (requestId !== this._lossMapRequestId) return;
 
-    const lossMask = data.change.map((v) => (v < 0 ? 1 : 0));
-    const gainMask = data.change.map((v) => (v > 0 ? 1 : 0));
+    const lossMaskRaw = data.change.map((v) => (v < 0 ? 1 : 0));
+    const gainMaskRaw = data.change.map((v) => (v > 0 ? 1 : 0));
+    const lossMask = KaraguaLeafletMap._denoiseSparseMask(lossMaskRaw, data.cols, data.rows);
+    const gainMask = KaraguaLeafletMap._denoiseSparseMask(gainMaskRaw, data.cols, data.rows);
     const smoothRadius = KaraguaLeafletMap._adaptiveSmoothRadius(
       b.getWest(),
       b.getSouth(),
@@ -1622,6 +1624,7 @@ class KaraguaLeafletMap extends HTMLElement {
       b.getNorth(),
       data.cols,
       data.rows,
+      KaraguaLeafletMap._LOSS_SMOOTH_TARGET_METERS,
     );
     const dLoss = KaraguaLeafletMap._neighborhoodAverage(
       lossMask,
@@ -1751,6 +1754,7 @@ class KaraguaLeafletMap extends HTMLElement {
       b.getNorth(),
       data.cols,
       data.rows,
+      KaraguaLeafletMap._SOC_SMOOTH_TARGET_METERS,
     );
     const smoothTha = KaraguaLeafletMap._neighborhoodAverage(
       data.socTha,
@@ -1997,6 +2001,20 @@ class KaraguaLeafletMap extends HTMLElement {
   // correspondiam a ~50m reais; agora isso vira o alvo em vez do número
   // de células em si.
   static _SMOOTH_TARGET_METERS = 50;
+  // SOC e Perda/Ganho precisam de mais suavização que o GMW pra ficar com
+  // acabamento parecido — não é capricho, é limitação real do dado (ver
+  // análise nos comentários de _refreshSoc/_refreshLossMap): SOC vem de
+  // uma fonte 3x mais grossa (30m vs 10m do GMW), então usa um alvo na
+  // mesma proporção (30m × 5 ≈ 150m, mesma razão alvo/resolução do GMW:
+  // 50m × 5 = 10m). Perda/Ganho tem a MESMA resolução do GMW (reusa a
+  // fonte dele), mas é a diferença entre duas classificações independentes
+  // — amplifica ruído de classificação em pixels isolados na franja, que
+  // vira "sal e pimenta" espalhado em vez de um sinal contíguo. Um alvo
+  // maior (90m) dá mais amostras pra diluir esse ruído; o filtro de
+  // suporte mínimo em _denoiseSparseMask cuida da outra metade do
+  // problema (remove os pixels isolados antes mesmo de suavizar).
+  static _SOC_SMOOTH_TARGET_METERS = 150;
+  static _LOSS_SMOOTH_TARGET_METERS = 90;
   static _METERS_PER_DEGREE_LAT = 111_320;
 
   // Converte o alvo em metros pra um raio em células pra essa grade
@@ -2005,18 +2023,41 @@ class KaraguaLeafletMap extends HTMLElement {
   // quando afasta). Sem isso, um raio fixo em células passa a representar
   // uma área real cada vez maior conforme o usuário afasta o zoom, e a
   // mancha borrada descola do lugar de verdade (era o bug relatado).
-  // Clampado entre 1 (nunca desliga a suavização, senão os quadrados da
-  // grade voltam) e 10 (nunca deixa uma única mancha engolir a grade
-  // inteira quando o zoom está bem próximo).
-  static _adaptiveSmoothRadius(west, south, east, north, cols, rows) {
+  // `targetMeters` default é o do GMW; SOC/Perda-Ganho passam o deles
+  // (maiores, ver acima). Clampado entre 1 (nunca desliga a suavização,
+  // senão os quadrados da grade voltam) e 16 (nunca deixa uma única
+  // mancha engolir a grade inteira quando o zoom está bem próximo).
+  static _adaptiveSmoothRadius(
+    west,
+    south,
+    east,
+    north,
+    cols,
+    rows,
+    targetMeters = KaraguaLeafletMap._SMOOTH_TARGET_METERS,
+  ) {
     const centerLat = (south + north) / 2;
     const metersPerDegreeLng =
       KaraguaLeafletMap._METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
     const cellWidthM = ((east - west) / cols) * metersPerDegreeLng;
     const cellHeightM = ((north - south) / rows) * KaraguaLeafletMap._METERS_PER_DEGREE_LAT;
     const cellSizeM = (cellWidthM + cellHeightM) / 2;
-    const radius = Math.round(KaraguaLeafletMap._SMOOTH_TARGET_METERS / Math.max(cellSizeM, 1));
-    return Math.max(1, Math.min(10, radius));
+    const radius = Math.round(targetMeters / Math.max(cellSizeM, 1));
+    return Math.max(1, Math.min(16, radius));
+  }
+
+  // Filtro de suporte mínimo (denoise) pra máscaras esparsas — usado só
+  // pelo Perda/Ganho. Um pixel só sobrevive se ele MAIS pelo menos 1
+  // vizinho imediato (janela 3×3, raio 1) também tiverem mudado; pixel
+  // isolado sem nenhum vizinho igual é tratado como ruído de classificação
+  // (mais comum na franja do manguezal, onde é mais difícil classificar de
+  // forma consistente ano a ano) e zerado ANTES de entrar na suavização
+  // grande — sem isso, esse ruído sobrevive como grão espalhado mesmo
+  // depois do blur.
+  static _denoiseSparseMask(mask, cols, rows, minSupport = 2) {
+    const localDensity = KaraguaLeafletMap._neighborhoodAverage(mask, cols, rows, 1);
+    const threshold = minSupport / 9;
+    return mask.map((v, i) => (v > 0 && localDensity[i] >= threshold ? v : 0));
   }
 
   // Média de vizinhança por tabela de somas (summed-area table): soma numa
