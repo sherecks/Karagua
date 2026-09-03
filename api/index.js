@@ -1091,6 +1091,152 @@ app.get("/mangrove-extent-history", async (_req, res) => {
   }
 });
 
+// ── Fauna registrada (GBIF — Global Biodiversity Information Facility) ─────
+// Registros REAIS de ocorrência de espécies dentro do limite do município,
+// não pontos cadastrados manualmente — reforça "Berçário da Fauna" com
+// evidência de terceiros, citável (cada espécie linka de volta pro
+// registro original no GBIF). API pública, sem chave, sem cadastro.
+// https://www.gbif.org/developer/occurrence
+//
+// GBIF não tem um "recorte por polígono" simples via bbox só (retorna tudo
+// dentro do retângulo, que pega município vizinho) — por isso o filtro
+// final usa pointInPolygons, igual o resto da API. E não queremos as
+// dezenas de milhares de ocorrências brutas num mapa (maioria é o mesmo
+// bando de pássaro fotografado 50x no iNaturalist) — o que interessa aqui
+// é "quais ESPÉCIES foram confirmadas aqui", não cada avistamento. Por
+// isso: 1 chamada de faceta pra saber as espécies distintas (Animalia,
+// dentro do bbox) + 1 chamada por espécie pra pegar um registro
+// representativo (com foto, se tiver) + nome popular.
+const GBIF_URL = "https://api.gbif.org/v1/occurrence/search";
+const GBIF_SPECIES_URL = "https://api.gbif.org/v1/species";
+const GBIF_MAX_SPECIES = 60; // teto de segurança — nunca chegamos perto disso aqui
+
+async function fetchGbifSpeciesKeys(west, south, east, north) {
+  const params = new URLSearchParams({
+    decimalLatitude: `${south},${north}`,
+    decimalLongitude: `${west},${east}`,
+    kingdomKey: "1", // Animalia
+    hasCoordinate: "true",
+    limit: "0",
+    facet: "speciesKey",
+    "facet.limit": String(GBIF_MAX_SPECIES),
+  });
+  const res = await fetch(`${GBIF_URL}?${params}`);
+  if (!res.ok) throw new Error(`GBIF respondeu ${res.status}`);
+  const body = await res.json();
+  return (body.facets?.[0]?.counts ?? []).map((c) => ({
+    speciesKey: c.name,
+    occurrenceCount: c.count,
+  }));
+}
+
+async function fetchGbifSpeciesDetail(
+  speciesKey,
+  occurrenceCount,
+  west,
+  south,
+  east,
+  north,
+  polygons,
+) {
+  const params = new URLSearchParams({
+    speciesKey,
+    decimalLatitude: `${south},${north}`,
+    decimalLongitude: `${west},${east}`,
+    hasCoordinate: "true",
+    hasGeospatialIssue: "false",
+    limit: "20", // pega algumas dentro do bbox e escolhe a melhor (com foto) em vez da 1ª
+    // Sem mediaType:"StillImage" aqui — isso filtraria no lado do GBIF antes
+    // do recorte por polígono, restringindo a poucos registros fotografados
+    // (que podem cair fora do município mesmo dentro do bbox) e derrubando
+    // espécies que teriam registro válido sem foto.
+  });
+  const [occRes, spRes, vnRes] = await Promise.all([
+    fetch(`${GBIF_URL}?${params}`),
+    fetch(`${GBIF_SPECIES_URL}/${speciesKey}`),
+    fetch(`${GBIF_SPECIES_URL}/${speciesKey}/vernacularNames`),
+  ]);
+  if (!occRes.ok || !spRes.ok) return null;
+  const [occBody, species, vnBody] = await Promise.all([
+    occRes.json(),
+    spRes.json(),
+    vnRes.ok ? vnRes.json() : Promise.resolve(null),
+  ]);
+  // Filtra pro polígono do município ANTES de escolher o representante —
+  // o bbox é só um retângulo, então um registro fora do polígono (mas
+  // dentro do bbox) não pode "vencer" um registro válido só por ter foto.
+  const inside = (occBody.results ?? []).filter((r) =>
+    pointInPolygons(r.decimalLongitude, r.decimalLatitude, polygons),
+  );
+  const withImage = inside.find((r) => r.media?.[0]?.identifier);
+  const record = withImage ?? inside[0];
+  if (!record) return null;
+  // O campo `vernacularName` de nível superior de /species/{key} não é
+  // confiável (a mesma chave às vezes vem sem ele) — a lista dedicada em
+  // /vernacularNames é a fonte que sempre traz o nome em português, quando existe.
+  const vernacularPt = vnBody?.results?.find((r) => r.language === "por")?.vernacularName ?? null;
+  return {
+    scientificName: species.canonicalName ?? species.scientificName,
+    vernacularName: vernacularPt,
+    lat: record.decimalLatitude,
+    lng: record.decimalLongitude,
+    date: record.eventDate ?? null,
+    imageUrl: record.media?.[0]?.identifier ?? null,
+    occurrenceCount,
+    gbifUrl: `https://www.gbif.org/occurrence/${record.key}`,
+  };
+}
+
+const GBIF_TTL_MS = 6 * 60 * 60 * 1000;
+let gbifFaunaPromise = null;
+let gbifFaunaAt = 0;
+
+// Sem parâmetros de bbox — mesmo padrão do /mangrove-loss e
+// /mangrove-extent-history: sempre o município inteiro.
+app.get("/fauna-gbif", async (_req, res) => {
+  if (gbifFaunaPromise && Date.now() - gbifFaunaAt < GBIF_TTL_MS) {
+    try {
+      return res
+        .set("Cache-Control", "public, max-age=3600")
+        .json({ data: await gbifFaunaPromise });
+    } catch {
+      // cache inválido (a promise rejeitou) — recalcula abaixo
+    }
+  }
+
+  gbifFaunaAt = Date.now();
+  gbifFaunaPromise = (async () => {
+    const municipio = await getMunicipioPolygon();
+    const [west, south, east, north] = municipio.bbox;
+    const keys = await fetchGbifSpeciesKeys(west, south, east, north);
+    const details = await Promise.all(
+      keys.map(({ speciesKey, occurrenceCount }) =>
+        fetchGbifSpeciesDetail(
+          speciesKey,
+          occurrenceCount,
+          west,
+          south,
+          east,
+          north,
+          municipio.polygons,
+        ).catch(() => null),
+      ),
+    );
+    const species = details.filter(Boolean).sort((a, b) => b.occurrenceCount - a.occurrenceCount);
+    return { municipio: "Balneário Barra do Sul", species, source: "GBIF.org" };
+  })();
+  gbifFaunaPromise.catch(() => {
+    gbifFaunaPromise = null;
+  });
+
+  try {
+    const data = await gbifFaunaPromise;
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get("/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");

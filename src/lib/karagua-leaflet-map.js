@@ -576,6 +576,20 @@ class KaraguaLeafletMap extends HTMLElement {
           padding: 0;
         }
         .point-detail-close:hover { color: #2C3E50; }
+        .fauna-gbif-photo {
+          display: block;
+          width: 100%;
+          max-height: 120px;
+          object-fit: cover;
+          border-radius: 6px;
+          margin: 6px 0;
+        }
+        .fauna-gbif-link {
+          color: #5E3B8A;
+          font-weight: 600;
+          text-decoration: none;
+        }
+        .fauna-gbif-link:hover { text-decoration: underline; }
 
         /* Abaixo de 1024px as 3 colunas não cabem lado a lado — viram 3
            abas (mesmo mecanismo de data-tab-group/data-tab-panel usado
@@ -679,6 +693,11 @@ class KaraguaLeafletMap extends HTMLElement {
                 </label>
                 <div class="class-legend" id="soc-legend" hidden></div>
                 <span class="layer-credit" id="soc-credit" hidden>Sanderman et al. 2018 (atualização 2023) · 30m</span>
+                <label class="layer-toggle">
+                  <input type="checkbox" id="fauna-gbif-toggle">
+                  <span>Fauna registrada (GBIF)</span>
+                </label>
+                <span class="layer-credit" id="fauna-gbif-credit" hidden>GBIF.org · registros com coordenada, recortados pelo município</span>
                 <button type="button" id="area-select-btn" class="layer-button">Recortar área em 3D</button>
               </div>
             </div>
@@ -772,6 +791,7 @@ class KaraguaLeafletMap extends HTMLElement {
     this._initGmwExtentToggle();
     this._initLossMapToggle();
     this._initSocToggle();
+    this._initFaunaGbifToggle();
     this._initAreaSelectTool();
     this._initHistorySection();
 
@@ -1758,6 +1778,126 @@ class KaraguaLeafletMap extends HTMLElement {
           ? `≈ ${data.minTha}-${data.maxTha} t C/ha na área visível · Sanderman et al. 2018, atual. 2023 · 0-100cm, 30m (${data.period})`
           : `Sem manguezal mapeado nessa área · Sanderman et al. 2018, atual. 2023 · 0-100cm, 30m`;
     }
+  }
+
+  // Fauna registrada (GBIF): camada SEPARADA dos "Pontos de interesse"
+  // (CSV/API curados à mão) — aqui é dado bruto de observação real
+  // (GBIF.org, ocorrências com coordenada, recortadas pelo polígono do
+  // município no back-end). Município inteiro, sem depender do bbox
+  // visível (mesmo padrão de /mangrove-loss e /mangrove-extent-history):
+  // busca 1x sob demanda (1º toggle) e fica em cache no componente — não
+  // reagenda em moveend/zoomend porque o dado não muda com o pan/zoom.
+  _initFaunaGbifToggle() {
+    const toggle = this.shadowRoot.getElementById("fauna-gbif-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("change", () => {
+      void this._setFaunaGbifVisible(toggle.checked);
+    });
+  }
+
+  async _setFaunaGbifVisible(on) {
+    const credit = this.shadowRoot.getElementById("fauna-gbif-credit");
+    if (!on) {
+      if (this._faunaGbifLayer) {
+        this._map.removeLayer(this._faunaGbifLayer);
+        this._faunaGbifLayer = null;
+      }
+      if (credit) credit.hidden = true;
+      return;
+    }
+    if (credit) credit.hidden = false;
+    if (this._faunaGbifData) {
+      this._renderFaunaGbif(this._faunaGbifData);
+      return;
+    }
+    await this._loadFaunaGbif();
+  }
+
+  async _loadFaunaGbif() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const credit = this.shadowRoot.getElementById("fauna-gbif-credit");
+    if (!apiUrl) return;
+    if (credit) credit.textContent = "Carregando registros do GBIF...";
+    try {
+      const res = await fetch(`${apiUrl.replace(/\/$/, "")}/fauna-gbif`);
+      const body = await res.json();
+      if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+      this._faunaGbifData = body.data;
+    } catch (e) {
+      console.warn("Fauna registrada (GBIF) indisponível:", e);
+      if (credit) credit.textContent = "Fauna registrada (GBIF) indisponível no momento.";
+      return;
+    }
+    const toggle = this.shadowRoot.getElementById("fauna-gbif-toggle");
+    if (!toggle?.checked) return; // usuário desmarcou enquanto carregava
+    this._renderFaunaGbif(this._faunaGbifData);
+  }
+
+  _renderFaunaGbif(data) {
+    if (this._faunaGbifLayer) this._map.removeLayer(this._faunaGbifLayer);
+    this._faunaGbifLayer = L.layerGroup([]).addTo(this._map);
+    const FAUNA_FILL = "#8B5FBF";
+    const FAUNA_STROKE = "#5E3B8A";
+    for (const sp of data.species) {
+      const marker = L.circleMarker([sp.lat, sp.lng], {
+        radius: 7,
+        color: FAUNA_STROKE,
+        weight: 1.5,
+        fillColor: FAUNA_FILL,
+        fillOpacity: 0.85,
+      }).addTo(this._faunaGbifLayer);
+      marker.on("click", () => this._showFaunaGbifInfo(sp));
+    }
+    const credit = this.shadowRoot.getElementById("fauna-gbif-credit");
+    if (credit) {
+      credit.textContent = data.species.length
+        ? `${data.species.length} espécies confirmadas em ${data.municipio} · Fonte: ${data.source}`
+        : `Nenhum registro com coordenada válida no município · Fonte: ${data.source}`;
+    }
+  }
+
+  // Corpo do detalhe tem foto/link — não dá pra usar _showInfo (só
+  // textContent). Monta via DOM (não innerHTML com string) porque nome
+  // popular/científico e URL de foto vêm de uma API externa (GBIF).
+  _showFaunaGbifInfo(sp) {
+    const detail = this.shadowRoot.getElementById("point-detail");
+    if (!detail) return;
+    const titleEl = detail.querySelector(".point-detail-title");
+    const bodyEl = detail.querySelector(".point-detail-body");
+    titleEl.textContent = sp.vernacularName ?? sp.scientificName;
+
+    bodyEl.textContent = "";
+    const sci = document.createElement("em");
+    sci.textContent = sp.scientificName;
+    bodyEl.appendChild(sci);
+    bodyEl.appendChild(document.createElement("br"));
+
+    if (sp.imageUrl) {
+      const img = document.createElement("img");
+      img.src = sp.imageUrl;
+      img.alt = sp.scientificName;
+      img.className = "fauna-gbif-photo";
+      bodyEl.appendChild(img);
+    }
+
+    const meta = document.createElement("span");
+    const dateStr = sp.date ? new Date(sp.date).toLocaleDateString("pt-BR") : "data desconhecida";
+    meta.textContent = `${sp.occurrenceCount} registro(s) no município · último em ${dateStr}`;
+    bodyEl.appendChild(meta);
+    bodyEl.appendChild(document.createElement("br"));
+
+    const link = document.createElement("a");
+    link.href = sp.gbifUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Ver registro no GBIF ↗";
+    link.className = "fauna-gbif-link";
+    bodyEl.appendChild(link);
+
+    detail.hidden = false;
+    this._activateTab("data", "points");
+    this._activateTab("mobile", "data");
+    this._setHudDockCollapsed(false);
   }
 
   // Histórico: mesma ideia da camada de concentração acima, mas em vez de UM
