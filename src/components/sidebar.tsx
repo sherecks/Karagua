@@ -27,6 +27,22 @@ function itemVariants(enterDelay: number) {
   } as const;
 }
 
+// Orçamento fixo de cascata: distribui os delays de entrada dentro de um
+// total constante, em vez de um incremento fixo por item (que fazia o último
+// link demorar ~2.7s pra aparecer com 9 itens — cresce sem limite conforme
+// NAV_SECTIONS cresce). `total` é a contagem real de itens renderizados.
+const STAGGER_BASE_DELAY = 0.15;
+const STAGGER_SPREAD = 0.6;
+function enterDelayFor(index: number, total: number) {
+  if (total <= 1) return STAGGER_BASE_DELAY;
+  return STAGGER_BASE_DELAY + (index / (total - 1)) * STAGGER_SPREAD;
+}
+
+function getFocusable(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"));
+}
+
 // Links fixos, sempre visíveis independente da página (home ou não).
 // `external: true` abre em nova aba (rota fora do domínio, não faz sentido
 // navegar via react-router).
@@ -44,14 +60,31 @@ export function Sidebar({ onClose }: SidebarProps) {
   const fixedLinks = FIXED_LINKS.filter((link) => link.to !== pathname);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Semântica de diálogo: Escape fecha, scroll da página trava, foco entra no menu.
+  // Semântica de diálogo: Escape fecha, scroll da página trava, foco entra no
+  // menu e fica preso nele (Tab/Shift+Tab não escapam pro conteúdo por trás —
+  // role="dialog" aria-modal="true" sozinho não impede isso, só o trap real faz).
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     rootRef.current?.querySelector<HTMLAnchorElement>("a")?.focus();
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = getFocusable(rootRef.current);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -69,6 +102,9 @@ export function Sidebar({ onClose }: SidebarProps) {
     }
     onClose();
   }
+
+  const firstBlockCount = isHome ? itens.length : 1;
+  const totalItems = firstBlockCount + fixedLinks.length;
 
   return (
     <motion.div
@@ -89,16 +125,7 @@ export function Sidebar({ onClose }: SidebarProps) {
       }}
       className="fixed top-0 justify-center items-center right-0 z-50 bottom-0 left-0 bg-foreground w-full h-full"
     >
-      <motion.ul
-        transition={{
-          type: "tween",
-          delay: 1,
-          duration: 0.64,
-          inherit: true,
-          ease: "easeInOut",
-        }}
-        className="flex flex-col gap-3 p-6 max-w-xl h-screen mx-auto justify-center items-center sm:gap-4 md:p-10"
-      >
+      <motion.ul className="flex flex-col gap-3 p-6 max-w-xl h-screen mx-auto justify-center items-center sm:gap-4 md:p-10">
         {isHome
           ? itens.map((item, index) => (
               <li key={item.id}>
@@ -106,7 +133,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                   href={`#${item.id}`}
                   onClick={(e) => handleNavigate(e, item.id)}
                   className="text-2xl font-semibold text-white transition-colors hover:text-k-bright sm:text-4xl md:text-5xl"
-                  variants={itemVariants((index + 1) * 0.3)}
+                  variants={itemVariants(enterDelayFor(index, totalItems))}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
@@ -125,7 +152,7 @@ export function Sidebar({ onClose }: SidebarProps) {
           : [{ label: "Início", to: "/" }].map((item, index) => (
               <li key={item.to}>
                 <motion.div
-                  variants={itemVariants((index + 1) * 0.3)}
+                  variants={itemVariants(enterDelayFor(index, totalItems))}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
@@ -150,7 +177,7 @@ export function Sidebar({ onClose }: SidebarProps) {
         {fixedLinks.map((link, index) => (
           <li key={link.to}>
             <motion.div
-              variants={itemVariants((isHome ? itens.length + 1 + index : 2 + index) * 0.3)}
+              variants={itemVariants(enterDelayFor(firstBlockCount + index, totalItems))}
               initial="hidden"
               animate="visible"
               exit="exit"

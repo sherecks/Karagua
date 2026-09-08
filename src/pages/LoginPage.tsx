@@ -1,16 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AnimatePresence, motion } from "motion/react";
-import { Equal, X } from "lucide-react";
-import { Sidebar } from "@/components/sidebar";
-import { EASE_OUT_QUART } from "@/lib/motion";
-import { startViewTransition } from "@/lib/view-transition";
+import { SiteMenu } from "@/components/site-menu";
 import { login } from "@/lib/api";
 
-const iconTransition = { duration: 0.25, ease: EASE_OUT_QUART } as const;
-
 export function LoginPage() {
-  const [isOpen, setIsOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,46 +31,11 @@ export function LoginPage() {
         className="absolute bottom-0 left-0 w-full opacity-60 pointer-events-none select-none"
       />
 
-      <AnimatePresence>{isOpen && <Sidebar onClose={() => setIsOpen(false)} />}</AnimatePresence>
-
       <header className="relative z-[11] flex items-center justify-between px-8 py-4">
         <Link to="/" style={{ viewTransitionName: "brand-mark" }}>
           <img src="/logo-2.svg" alt="Karaguá" className="h-12 w-auto" />
         </Link>
-        <motion.button
-          type="button"
-          onClick={() => startViewTransition(() => setIsOpen((v) => !v))}
-          aria-label={isOpen ? "Fechar menu" : "Abrir menu"}
-          aria-expanded={isOpen}
-          className="relative bg-background cursor-pointer inline-flex size-10 rounded-full items-center justify-center"
-          style={{ viewTransitionName: "menu-toggle" }}
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            {isOpen ? (
-              <motion.span
-                key="close"
-                initial={{ opacity: 0, rotate: -90, scale: 0.85 }}
-                animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                exit={{ opacity: 0, rotate: 90, scale: 0.85 }}
-                transition={iconTransition}
-                className="absolute inset-0 inline-flex items-center justify-center"
-              >
-                <X aria-hidden className="size-5" />
-              </motion.span>
-            ) : (
-              <motion.span
-                key="menu"
-                initial={{ opacity: 0, rotate: 90, scale: 0.85 }}
-                animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                exit={{ opacity: 0, rotate: -90, scale: 0.85 }}
-                transition={iconTransition}
-                className="absolute inset-0 inline-flex items-center justify-center"
-              >
-                <Equal aria-hidden className="size-5" />
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </motion.button>
+        <SiteMenu />
       </header>
 
       <div className="relative flex-1 flex items-center justify-center px-4">
