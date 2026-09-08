@@ -103,7 +103,7 @@ export function LaboratorioPage() {
 
       {/* Hero: split editorial — manchete à esquerda, apoio ancorado à direita
           na base da manchete (blocos por alinhamento de grid, sem molduras). */}
-      <section className="relative flex min-h-[80vh] flex-col justify-center">
+      <section className="relative flex min-h-screen flex-col justify-center">
         <motion.div
           initial="hidden"
           animate="visible"
