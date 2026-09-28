@@ -46,10 +46,9 @@ function getFocusable(root: HTMLElement | null): HTMLElement[] {
 // Links fixos, sempre visíveis independente da página (home ou não).
 // `external: true` abre em nova aba (rota fora do domínio, não faz sentido
 // navegar via react-router).
-const FIXED_LINKS = [
+const FIXED_LINKS: { to: string; label: string; external?: boolean }[] = [
   { to: "/laboratorio-karagua-vivo", label: "Laboratório Karaguá" },
   { to: "/mapa", label: "Mapa do Projeto" },
-  { to: "https://rag-karagua.up.railway.app", label: "RAG Karaguá", external: true },
 ];
 
 export function Sidebar({ onClose }: SidebarProps) {
