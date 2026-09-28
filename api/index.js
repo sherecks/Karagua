@@ -680,65 +680,79 @@ app.get("/mangrove-soc", async (req, res) => {
 
 const METERS_PER_DEGREE_LAT = 111_320;
 
-// ── Limite oficial do município (IBGE Malhas API) ──────────────────────────
+// ── Limite oficial dos municípios (IBGE Malhas API) ────────────────────────
 // O histórico não pode usar a extensão VISÍVEL do mapa como área de
 // referência: dar zoom out ou arrastar o mapa muda o que "conta", e sempre
 // que o retângulo visível passa da fronteira ele pega manguezal de município
-// vizinho — o número deixa de significar "manguezal de Balneário Barra do
-// Sul". A malha oficial do IBGE (código 4202008) é o polígono real da
-// fronteira municipal, não uma aproximação — usada tanto pro bbox de busca
-// quanto (via ponto-dentro-do-polígono abaixo) pra excluir células que caem
-// fora da fronteira mas dentro do bbox retangular (litoral é irregular).
-const IBGE_MUNICIPIO_CODE = 4202057;
-const IBGE_MALHA_URL = `https://servicodados.ibge.gov.br/api/v3/malhas/municipios/${IBGE_MUNICIPIO_CODE}?formato=application/vnd.geo+json&qualidade=maxima`;
+// vizinho — o número deixa de significar "manguezal do município". A malha
+// oficial do IBGE é o polígono real da fronteira municipal, não uma
+// aproximação — usada tanto pro bbox de leitura quanto (via varredura por
+// linha, ver polygonRowCrossings) pra excluir pixels que caem fora da
+// fronteira mas dentro do bbox retangular (litoral é irregular).
+//
+// Municípios da Baía da Babitonga com histórico/perda. A chave é o que o
+// front manda em ?municipio=; sem o parâmetro vale Barra do Sul.
+const MUNICIPIOS = {
+  "balneario-barra-do-sul": { code: 4202057, nome: "Balneário Barra do Sul" },
+  "sao-francisco-do-sul": { code: 4216206, nome: "São Francisco do Sul" },
+  joinville: { code: 4209102, nome: "Joinville" },
+};
+const DEFAULT_MUNICIPIO = "balneario-barra-do-sul";
 
-let municipioPromise = null;
-function getMunicipioPolygon() {
-  if (!municipioPromise) {
-    municipioPromise = (async () => {
-      const res = await fetch(IBGE_MALHA_URL);
-      if (!res.ok) throw new Error(`IBGE Malhas Municipais respondeu ${res.status}`);
-      const geojson = await res.json();
-      const geometry = geojson.features[0].geometry;
-      // A malha pode vir como Polygon ou MultiPolygon dependendo do
-      // município — normaliza pra sempre trabalhar com uma lista de anéis.
-      const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
-      let west = Infinity;
-      let south = Infinity;
-      let east = -Infinity;
-      let north = -Infinity;
-      for (const rings of polygons) {
-        for (const [lon, lat] of rings[0]) {
-          if (lon < west) west = lon;
-          if (lon > east) east = lon;
-          if (lat < south) south = lat;
-          if (lat > north) north = lat;
-        }
-      }
-      return { polygons, bbox: [west, south, east, north] };
-    })();
-    municipioPromise.catch(() => {
-      municipioPromise = null;
-    });
-  }
-  return municipioPromise;
+const ibgeMalhaUrl = (code) =>
+  `https://servicodados.ibge.gov.br/api/v3/malhas/municipios/${code}?formato=application/vnd.geo+json&qualidade=maxima`;
+
+function municipioFromQuery(req) {
+  const slug = req.query.municipio ?? DEFAULT_MUNICIPIO;
+  return Object.hasOwn(MUNICIPIOS, slug) ? slug : null;
 }
 
-// Ray casting padrão (contagem de cruzamentos par/ímpar). Só o anel externo
-// de cada polígono importa aqui — a malha do IBGE não tem buraco/enclave
-// interno nesse município.
-function pointInPolygons(lon, lat, polygons) {
-  let inside = false;
+const municipioPolygonCache = new Map(); // slug -> Promise<{ polygons, bbox }>
+function getMunicipioPolygon(slug) {
+  if (municipioPolygonCache.has(slug)) return municipioPolygonCache.get(slug);
+  const promise = (async () => {
+    const res = await fetch(ibgeMalhaUrl(MUNICIPIOS[slug].code));
+    if (!res.ok) throw new Error(`IBGE Malhas Municipais respondeu ${res.status}`);
+    const geojson = await res.json();
+    const geometry = geojson.features[0].geometry;
+    // A malha pode vir como Polygon ou MultiPolygon (São Francisco do Sul
+    // tem ilhas) — normaliza pra sempre trabalhar com uma lista de polígonos.
+    const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+    let west = Infinity;
+    let south = Infinity;
+    let east = -Infinity;
+    let north = -Infinity;
+    for (const rings of polygons) {
+      for (const [lon, lat] of rings[0]) {
+        if (lon < west) west = lon;
+        if (lon > east) east = lon;
+        if (lat < south) south = lat;
+        if (lat > north) north = lat;
+      }
+    }
+    return { polygons, bbox: [west, south, east, north] };
+  })();
+  municipioPolygonCache.set(slug, promise);
+  promise.catch(() => municipioPolygonCache.delete(slug));
+  return promise;
+}
+
+// Longitudes onde a linha de latitude `lat` cruza a fronteira, ordenadas: o
+// trecho entre xs[0] e xs[1] está dentro, entre xs[1] e xs[2] fora, e assim
+// por diante (par/ímpar). Considera TODOS os anéis de todos os polígonos, então
+// ilhas (MultiPolygon) e eventuais buracos saem certos sem caso especial.
+function polygonRowCrossings(polygons, lat) {
+  const xs = [];
   for (const rings of polygons) {
-    const ring = rings[0];
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, yi] = ring[i];
-      const [xj, yj] = ring[j];
-      const crosses = yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
-      if (crosses) inside = !inside;
+    for (const ring of rings) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i];
+        const [xj, yj] = ring[j];
+        if (yi > lat !== yj > lat) xs.push(xi + ((lat - yi) * (xj - xi)) / (yj - yi));
+      }
     }
   }
-  return inside;
+  return xs.sort((a, b) => a - b);
 }
 
 function cellAreaHaFor(west, south, east, north, cols, rows) {
@@ -863,23 +877,8 @@ async function computeGmwMaskRecent(west, south, east, north, cols, rows, year) 
 // com v4.
 const GMW_FULL_HISTORY_YEARS = Array.from({ length: 2025 - 1996 + 1 }, (_, i) => 1996 + i);
 
-async function computeGmwExtentRecent(west, south, east, north, cols, rows, year, polygons) {
-  const mangrove = await computeGmwMaskRecent(west, south, east, north, cols, rows, year);
-  const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
-  let mangroveCells = 0;
-  for (let row = 0; row < rows; row++) {
-    const lat = north - (row / (rows - 1)) * (north - south);
-    for (let col = 0; col < cols; col++) {
-      const lon = west + (col / (cols - 1)) * (east - west);
-      if (mangrove[row * cols + col] && pointInPolygons(lon, lat, polygons)) mangroveCells++;
-    }
-  }
-  return { mangrove, areaHa: Math.round(mangroveCells * cellAreaHa) };
-}
-
 // Extensão de UM ano pra camada visual do mapa (área VISÍVEL, sem filtro de
-// município — diferente de computeGmwExtentRecent acima, que é só pro
-// histórico/perda).
+// município — o histórico/perda por município fica em computeMunicipioGmwStats).
 async function computeGmwExtentViewport(west, south, east, north, cols, rows, year) {
   const mangrove = await computeGmwMaskRecent(west, south, east, north, cols, rows, year);
   const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
@@ -887,7 +886,7 @@ async function computeGmwExtentViewport(west, south, east, north, cols, rows, ye
   return { mangrove, areaHa };
 }
 
-// Mesma comparação pixel a pixel do computeGmwLossPeriod abaixo, mas pra
+// Mesma comparação pixel a pixel do computeMunicipioGmwStats abaixo, mas pra
 // área VISÍVEL do mapa (sem filtro de município) e devolvendo a grade
 // célula a célula em vez de só o agregado em ha — é o que alimenta a
 // camada visual "Perda de manguezal" (mostra ONDE, não só quanto).
@@ -906,81 +905,6 @@ async function computeGmwLossMask(west, south, east, north, cols, rows) {
   }
   return change;
 }
-
-// ── Perda de manguezal (diferença entre dois anos) ─────────────────────────
-// Compara a máscara de dois anos pixel a pixel: era manguezal e deixou de
-// ser = perda; não era e passou a ser = ganho. Uma comparação só, 1996→2025,
-// os dois extremos disponíveis no v4.1.12 — ver comentário de
-// GMW_FULL_HISTORY_YEARS acima pra por que não precisa mais dividir em dois
-// períodos por fonte diferente.
-async function computeGmwLossPeriod(municipio, fromYear, toYear) {
-  const [west, south, east, north] = municipio.bbox;
-  const cols = GMW_HISTORY_GRID;
-  const rows = GMW_HISTORY_GRID;
-  const [fromMask, toMask] = await Promise.all([
-    computeGmwMaskRecent(west, south, east, north, cols, rows, fromYear),
-    computeGmwMaskRecent(west, south, east, north, cols, rows, toYear),
-  ]);
-  const cellAreaHa = cellAreaHaFor(west, south, east, north, cols, rows);
-
-  let lossCells = 0;
-  let gainCells = 0;
-  let stableCells = 0;
-  for (let row = 0; row < rows; row++) {
-    const lat = north - (row / (rows - 1)) * (north - south);
-    for (let col = 0; col < cols; col++) {
-      const lon = west + (col / (cols - 1)) * (east - west);
-      if (!pointInPolygons(lon, lat, municipio.polygons)) continue;
-      const i = row * cols + col;
-      const was = fromMask[i] > 0;
-      const is = toMask[i] > 0;
-      if (was && !is) lossCells++;
-      else if (!was && is) gainCells++;
-      else if (was && is) stableCells++;
-    }
-  }
-  return {
-    fromYear,
-    toYear,
-    lossHa: Math.round(lossCells * cellAreaHa),
-    gainHa: Math.round(gainCells * cellAreaHa),
-    stableHa: Math.round(stableCells * cellAreaHa),
-    source: "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m",
-  };
-}
-
-const GMW_LOSS_TTL_MS = 6 * 60 * 60 * 1000;
-let gmwLossPromise = null;
-let gmwLossAt = 0;
-
-// Sem parâmetros de bbox, igual ao /mangrove-extent-history: sempre o
-// município inteiro (limite oficial do IBGE), nunca a área visível do mapa.
-app.get("/mangrove-loss", async (_req, res) => {
-  if (gmwLossPromise && Date.now() - gmwLossAt < GMW_LOSS_TTL_MS) {
-    try {
-      return res.set("Cache-Control", "public, max-age=3600").json({ data: await gmwLossPromise });
-    } catch {
-      // cache inválido (a promise rejeitou) — recalcula abaixo
-    }
-  }
-
-  gmwLossAt = Date.now();
-  gmwLossPromise = (async () => {
-    const municipio = await getMunicipioPolygon();
-    const period = await computeGmwLossPeriod(municipio, 1996, 2025);
-    return { municipio: "Balneário Barra do Sul", ...period };
-  })();
-  gmwLossPromise.catch(() => {
-    gmwLossPromise = null;
-  });
-
-  try {
-    const data = await gmwLossPromise;
-    res.set("Cache-Control", "public, max-age=3600").json({ data });
-  } catch (e) {
-    res.status(502).json({ error: e.message });
-  }
-});
 
 app.get("/mangrove-extent-gmw", async (req, res) => {
   const west = Number(req.query.west);
@@ -1035,203 +959,125 @@ app.get("/mangrove-loss-map", async (req, res) => {
   }
 });
 
-// Grade fixa (não depende mais de viewport, então não precisa escalar com
-// tamanho de tela) — 200 células já passa da resolução real do dado mais
-// grosso (v3, 25m) pro tamanho do município inteiro, sem gastar tempo à toa.
-const GMW_HISTORY_GRID = 200;
-let gmwHistoryPromise = null;
-const GMW_HISTORY_TTL_MS = 6 * 60 * 60 * 1000;
-let gmwHistoryAt = 0;
+// ── Histórico e perda por município (GMW v4.1, resolução nativa) ───────────
+// Conta pixel a pixel na grade NATIVA do GeoTIFF (1/3711°, ~27-30m), não numa
+// grade de amostragem. A versão anterior amostrava uma grade fixa de 200×200
+// sobre o bbox do município por vizinho mais próximo: células de ~0,75 ha em
+// Barra do Sul e ~5 ha em Joinville, então franja estreita de manguezal caía
+// ou não numa célula quase por sorte, e municípios de tamanhos diferentes
+// ficavam com precisões diferentes. Aqui cada pixel cujo centro está dentro do
+// polígono do IBGE conta com a sua área real (varia com a latitude da linha).
+// As 30 bandas (1996-2025) são lidas de uma vez por tile; a perda/ganho sai
+// da mesma leitura (banda de 1996 vs banda de 2025, pixel a pixel).
+//
+// Cobertura: só os tiles recortados em api/data/gmw-v4112 (lon -49 a -48).
+// Joinville passa um pouco a oeste de -49 (até -49,20), mas essa faixa é Serra
+// do Mar, longe da costa — não tem manguezal a contar ali.
+async function computeMunicipioGmwStats(slug) {
+  const municipio = await getMunicipioPolygon(slug);
+  const [west, south, east, north] = municipio.bbox;
+  const years = GMW_FULL_HISTORY_YEARS;
+  const samples = years.map((year) => year - GMW_RECENT_YEAR_START);
+  const areaHaByYear = new Float64Array(years.length);
+  let lossHa = 0;
+  let gainHa = 0;
+  let stableHa = 0;
 
-// Sem parâmetros de bbox: o histórico é sempre do MUNICÍPIO inteiro (limite
-// oficial do IBGE), nunca da área visível do mapa — ver comentário de
-// getMunicipioPolygon acima pra entender por quê (viewport pega município
-// vizinho sempre que o usuário dá zoom out ou arrasta o mapa).
-app.get("/mangrove-extent-history", async (_req, res) => {
-  if (gmwHistoryPromise && Date.now() - gmwHistoryAt < GMW_HISTORY_TTL_MS) {
-    try {
-      return res
-        .set("Cache-Control", "public, max-age=3600")
-        .json({ data: await gmwHistoryPromise });
-    } catch {
-      // cache inválido (a promise rejeitou) — recalcula abaixo
+  const tilePaths = integerTilesForBbox(west, south, east, north).map(gmwRecentTilePath);
+  const tiles = (await Promise.all(tilePaths.map(getGmwRecentImage))).filter(Boolean);
+  for (const tile of tiles) {
+    const [tw, ts, te, tn] = tile.bbox;
+    const resX = (te - tw) / tile.width;
+    const resY = (tn - ts) / tile.height;
+    const xMin = Math.max(0, Math.floor((west - tw) / resX));
+    const xMax = Math.min(tile.width, Math.ceil((east - tw) / resX));
+    const yMin = Math.max(0, Math.floor((tn - north) / resY));
+    const yMax = Math.min(tile.height, Math.ceil((tn - south) / resY));
+    if (xMax <= xMin || yMax <= yMin) continue;
+    const width = xMax - xMin;
+
+    const bands = await tile.image.readRasters({ window: [xMin, yMin, xMax, yMax], samples });
+    const first = bands[0];
+    const last = bands[bands.length - 1];
+    for (let y = yMin; y < yMax; y++) {
+      const lat = tn - (y + 0.5) * resY;
+      const pixelHa =
+        (resX *
+          METERS_PER_DEGREE_LAT *
+          Math.cos((lat * Math.PI) / 180) *
+          (resY * METERS_PER_DEGREE_LAT)) /
+        10_000;
+      const xs = polygonRowCrossings(municipio.polygons, lat);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        // Pixels cujo centro (tw + (x + 0.5) * resX) cai entre xs[k] e xs[k+1].
+        const from = Math.max(xMin, Math.ceil((xs[k] - tw) / resX - 0.5));
+        const to = Math.min(xMax - 1, Math.floor((xs[k + 1] - tw) / resX - 0.5));
+        for (let x = from; x <= to; x++) {
+          const i = (y - yMin) * width + (x - xMin);
+          for (let b = 0; b < bands.length; b++) {
+            if (bands[b][i] > 0) areaHaByYear[b] += pixelHa;
+          }
+          const was = first[i] > 0;
+          const is = last[i] > 0;
+          if (was && !is) lossHa += pixelHa;
+          else if (!was && is) gainHa += pixelHa;
+          else if (was && is) stableHa += pixelHa;
+        }
+      }
     }
   }
 
-  gmwHistoryAt = Date.now();
-  gmwHistoryPromise = (async () => {
-    const municipio = await getMunicipioPolygon();
-    const [west, south, east, north] = municipio.bbox;
-    const years = await Promise.all(
-      GMW_FULL_HISTORY_YEARS.map(async (year) => {
-        const { areaHa } = await computeGmwExtentRecent(
-          west,
-          south,
-          east,
-          north,
-          GMW_HISTORY_GRID,
-          GMW_HISTORY_GRID,
-          year,
-          municipio.polygons,
-        );
-        return { year, areaHa };
-      }),
-    );
-    return { bbox: municipio.bbox, municipio: "Balneário Barra do Sul", years };
-  })();
-  gmwHistoryPromise.catch(() => {
-    gmwHistoryPromise = null;
-  });
+  return {
+    slug,
+    municipio: MUNICIPIOS[slug].nome,
+    bbox: municipio.bbox,
+    years: years.map((year, b) => ({ year, areaHa: Math.round(areaHaByYear[b]) })),
+    loss: {
+      fromYear: years[0],
+      toYear: years[years.length - 1],
+      lossHa: Math.round(lossHa),
+      gainHa: Math.round(gainHa),
+      stableHa: Math.round(stableHa),
+      source: "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m",
+    },
+  };
+}
 
+// Sem TTL: os tiles são arquivos locais versionados e a malha do IBGE não
+// muda — o resultado só muda com um novo deploy (que zera o processo).
+// Rejeição sai do cache pra próxima chamada tentar de novo.
+const municipioGmwStatsCache = new Map(); // slug -> Promise
+function getMunicipioGmwStats(slug) {
+  if (municipioGmwStatsCache.has(slug)) return municipioGmwStatsCache.get(slug);
+  const promise = computeMunicipioGmwStats(slug);
+  municipioGmwStatsCache.set(slug, promise);
+  promise.catch(() => municipioGmwStatsCache.delete(slug));
+  return promise;
+}
+
+// Sem bbox: o histórico é sempre do MUNICÍPIO inteiro (limite oficial do
+// IBGE), nunca da área visível do mapa — ver comentário de
+// getMunicipioPolygon acima. ?municipio= escolhe qual (ver MUNICIPIOS).
+app.get("/mangrove-extent-history", async (req, res) => {
+  const slug = municipioFromQuery(req);
+  if (!slug) return res.status(400).json({ error: "municipio desconhecido" });
   try {
-    const data = await gmwHistoryPromise;
-    res.set("Cache-Control", "public, max-age=3600").json({ data });
+    const { municipio, bbox, years } = await getMunicipioGmwStats(slug);
+    res
+      .set("Cache-Control", "public, max-age=3600")
+      .json({ data: { slug, municipio, bbox, years } });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
 });
 
-// ── Fauna registrada (GBIF — Global Biodiversity Information Facility) ─────
-// Registros REAIS de ocorrência de espécies dentro do limite do município,
-// não pontos cadastrados manualmente — reforça "Berçário da Fauna" com
-// evidência de terceiros, citável (cada espécie linka de volta pro
-// registro original no GBIF). API pública, sem chave, sem cadastro.
-// https://www.gbif.org/developer/occurrence
-//
-// GBIF não tem um "recorte por polígono" simples via bbox só (retorna tudo
-// dentro do retângulo, que pega município vizinho) — por isso o filtro
-// final usa pointInPolygons, igual o resto da API. E não queremos as
-// dezenas de milhares de ocorrências brutas num mapa (maioria é o mesmo
-// bando de pássaro fotografado 50x no iNaturalist) — o que interessa aqui
-// é "quais ESPÉCIES foram confirmadas aqui", não cada avistamento. Por
-// isso: 1 chamada de faceta pra saber as espécies distintas (Animalia,
-// dentro do bbox) + 1 chamada por espécie pra pegar um registro
-// representativo (com foto, se tiver) + nome popular.
-const GBIF_URL = "https://api.gbif.org/v1/occurrence/search";
-const GBIF_SPECIES_URL = "https://api.gbif.org/v1/species";
-const GBIF_MAX_SPECIES = 60; // teto de segurança — nunca chegamos perto disso aqui
-
-async function fetchGbifSpeciesKeys(west, south, east, north) {
-  const params = new URLSearchParams({
-    decimalLatitude: `${south},${north}`,
-    decimalLongitude: `${west},${east}`,
-    kingdomKey: "1", // Animalia
-    hasCoordinate: "true",
-    limit: "0",
-    facet: "speciesKey",
-    "facet.limit": String(GBIF_MAX_SPECIES),
-  });
-  const res = await fetch(`${GBIF_URL}?${params}`);
-  if (!res.ok) throw new Error(`GBIF respondeu ${res.status}`);
-  const body = await res.json();
-  return (body.facets?.[0]?.counts ?? []).map((c) => ({
-    speciesKey: c.name,
-    occurrenceCount: c.count,
-  }));
-}
-
-async function fetchGbifSpeciesDetail(
-  speciesKey,
-  occurrenceCount,
-  west,
-  south,
-  east,
-  north,
-  polygons,
-) {
-  const params = new URLSearchParams({
-    speciesKey,
-    decimalLatitude: `${south},${north}`,
-    decimalLongitude: `${west},${east}`,
-    hasCoordinate: "true",
-    hasGeospatialIssue: "false",
-    limit: "20", // pega algumas dentro do bbox e escolhe a melhor (com foto) em vez da 1ª
-    // Sem mediaType:"StillImage" aqui — isso filtraria no lado do GBIF antes
-    // do recorte por polígono, restringindo a poucos registros fotografados
-    // (que podem cair fora do município mesmo dentro do bbox) e derrubando
-    // espécies que teriam registro válido sem foto.
-  });
-  const [occRes, spRes, vnRes] = await Promise.all([
-    fetch(`${GBIF_URL}?${params}`),
-    fetch(`${GBIF_SPECIES_URL}/${speciesKey}`),
-    fetch(`${GBIF_SPECIES_URL}/${speciesKey}/vernacularNames`),
-  ]);
-  if (!occRes.ok || !spRes.ok) return null;
-  const [occBody, species, vnBody] = await Promise.all([
-    occRes.json(),
-    spRes.json(),
-    vnRes.ok ? vnRes.json() : Promise.resolve(null),
-  ]);
-  // Filtra pro polígono do município ANTES de escolher o representante —
-  // o bbox é só um retângulo, então um registro fora do polígono (mas
-  // dentro do bbox) não pode "vencer" um registro válido só por ter foto.
-  const inside = (occBody.results ?? []).filter((r) =>
-    pointInPolygons(r.decimalLongitude, r.decimalLatitude, polygons),
-  );
-  const withImage = inside.find((r) => r.media?.[0]?.identifier);
-  const record = withImage ?? inside[0];
-  if (!record) return null;
-  // O campo `vernacularName` de nível superior de /species/{key} não é
-  // confiável (a mesma chave às vezes vem sem ele) — a lista dedicada em
-  // /vernacularNames é a fonte que sempre traz o nome em português, quando existe.
-  const vernacularPt = vnBody?.results?.find((r) => r.language === "por")?.vernacularName ?? null;
-  return {
-    scientificName: species.canonicalName ?? species.scientificName,
-    vernacularName: vernacularPt,
-    lat: record.decimalLatitude,
-    lng: record.decimalLongitude,
-    date: record.eventDate ?? null,
-    imageUrl: record.media?.[0]?.identifier ?? null,
-    occurrenceCount,
-    gbifUrl: `https://www.gbif.org/occurrence/${record.key}`,
-  };
-}
-
-const GBIF_TTL_MS = 6 * 60 * 60 * 1000;
-let gbifFaunaPromise = null;
-let gbifFaunaAt = 0;
-
-// Sem parâmetros de bbox — mesmo padrão do /mangrove-loss e
-// /mangrove-extent-history: sempre o município inteiro.
-app.get("/fauna-gbif", async (_req, res) => {
-  if (gbifFaunaPromise && Date.now() - gbifFaunaAt < GBIF_TTL_MS) {
-    try {
-      return res
-        .set("Cache-Control", "public, max-age=3600")
-        .json({ data: await gbifFaunaPromise });
-    } catch {
-      // cache inválido (a promise rejeitou) — recalcula abaixo
-    }
-  }
-
-  gbifFaunaAt = Date.now();
-  gbifFaunaPromise = (async () => {
-    const municipio = await getMunicipioPolygon();
-    const [west, south, east, north] = municipio.bbox;
-    const keys = await fetchGbifSpeciesKeys(west, south, east, north);
-    const details = await Promise.all(
-      keys.map(({ speciesKey, occurrenceCount }) =>
-        fetchGbifSpeciesDetail(
-          speciesKey,
-          occurrenceCount,
-          west,
-          south,
-          east,
-          north,
-          municipio.polygons,
-        ).catch(() => null),
-      ),
-    );
-    const species = details.filter(Boolean).sort((a, b) => b.occurrenceCount - a.occurrenceCount);
-    return { municipio: "Balneário Barra do Sul", species, source: "GBIF.org" };
-  })();
-  gbifFaunaPromise.catch(() => {
-    gbifFaunaPromise = null;
-  });
-
+// Perda/ganho 1996→2025 no município inteiro — mesma leitura do histórico.
+app.get("/mangrove-loss", async (req, res) => {
+  const slug = municipioFromQuery(req);
+  if (!slug) return res.status(400).json({ error: "municipio desconhecido" });
   try {
-    const data = await gbifFaunaPromise;
-    res.set("Cache-Control", "public, max-age=3600").json({ data });
+    const { municipio, loss } = await getMunicipioGmwStats(slug);
+    res.set("Cache-Control", "public, max-age=3600").json({ data: { slug, municipio, ...loss } });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
