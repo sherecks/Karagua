@@ -25,6 +25,8 @@ class KaraguaLeafletMap extends HTMLElement {
     this._gmwYearDebounce = 0;
     this._historyLoaded = false;
     this._historyRequestId = 0;
+    this._areaSummary = null; // [{ slug, nome, areaByYear: Map<ano, ha> }]
+    this._areaSummaryLoaded = false;
     this._gmwExtentRequestId = 0;
     this._socLayer = null;
     this._socActive = false;
@@ -381,6 +383,43 @@ class KaraguaLeafletMap extends HTMLElement {
           outline: 3px solid rgba(199,217,38,0.4);
           outline-offset: 2px;
         }
+        /* Área por município (ver _renderAreaSummary): uma linha por
+           município, clicável pra trocar o gráfico logo abaixo. */
+        .area-summary { margin: 4px 0 6px; }
+        .area-row {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 12px;
+          width: 100%;
+          min-height: 28px;
+          padding: 3px 6px;
+          border: none;
+          border-radius: 4px;
+          background: none;
+          font-family: 'Aileron', sans-serif;
+          font-size: 12px;
+          color: #2C3E50;
+          text-align: left;
+          cursor: pointer;
+        }
+        .area-row:hover { background: #F2EFE8; }
+        @media (max-width: 767px) {
+          .area-row { min-height: 44px; } /* alvo de toque (WCAG 2.2) */
+        }
+        .area-row[aria-pressed="true"] { background: #EDE9E0; font-weight: 600; }
+        .area-row:focus-visible {
+          outline: 3px solid rgba(199,217,38,0.4);
+          outline-offset: 2px;
+        }
+        .area-total {
+          display: flex;
+          justify-content: space-between;
+          padding: 3px 6px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #1A2332;
+        }
         .history-chart { display: block; overflow: visible; }
         .history-chart rect { transition: opacity 0.15s; }
         .history-chart rect:hover { opacity: 0.75; }
@@ -582,6 +621,12 @@ class KaraguaLeafletMap extends HTMLElement {
               <button type="button" class="fw-close" aria-label="Fechar Histórico do manguezal">×</button>
             </header>
             <div class="fw-body">
+              <p class="history-hint">
+                Área de manguezal em <span id="area-summary-year">2025</span>, dentro do limite do
+                município (IBGE). O ano segue a camada Concentração de manguezal.
+              </p>
+              <div id="area-summary" class="area-summary"></div>
+              <div class="hud-divider-h"></div>
               <div class="hud-row-between">
                 <p class="history-hint">Área de manguezal (ha) por ano, no município.</p>
                 <select id="history-municipio" class="history-select" aria-label="Município">
@@ -855,7 +900,9 @@ class KaraguaLeafletMap extends HTMLElement {
       this.shadowRoot.getElementById("fw-layer"),
       {
         onOpen: (id) => {
-          if (id === "history" && !this._historyLoaded) this._loadHistoryAndLoss();
+          if (id !== "history") return;
+          if (!this._historyLoaded) this._loadHistoryAndLoss();
+          void this._loadAreaSummary();
         },
       },
     );
@@ -1261,6 +1308,7 @@ class KaraguaLeafletMap extends HTMLElement {
         const year = KaraguaLeafletMap._GMW_YEARS[Number(yearSlider.value)];
         yearValue.textContent = String(year);
         this._gmwExtentYear = year;
+        this._renderAreaSummary();
         clearTimeout(this._gmwYearDebounce);
         this._gmwYearDebounce = setTimeout(() => {
           if (this._gmwExtentActive) void this._refreshGmwExtent();
@@ -1604,7 +1652,94 @@ class KaraguaLeafletMap extends HTMLElement {
   // abre (ver _initFloatingWindows) e a cada troca de município.
   _initHistorySection() {
     const select = this.shadowRoot.getElementById("history-municipio");
-    select?.addEventListener("change", () => this._loadHistoryAndLoss());
+    select?.addEventListener("change", () => {
+      this._loadHistoryAndLoss();
+      this._renderAreaSummary();
+    });
+  }
+
+  // Área por município: a mesma série do histórico (GMW contado pixel a
+  // pixel dentro do polígono do IBGE, ver computeMunicipioGmwStats na API),
+  // dos 3 municípios de uma vez, no ano da camada Concentração. Os
+  // municípios saem das <option> do seletor — uma lista só pra manter.
+  async _loadAreaSummary() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const wrap = this.shadowRoot.getElementById("area-summary");
+    const select = this.shadowRoot.getElementById("history-municipio");
+    if (!apiUrl || !wrap || !select || this._areaSummaryLoaded) return;
+    this._areaSummaryLoaded = true;
+    wrap.innerHTML = `<div class="history-loading">Calculando área por município...</div>`;
+
+    const municipios = [...select.options].map((o) => ({ slug: o.value, nome: o.textContent }));
+    try {
+      const series = await Promise.all(
+        municipios.map(async ({ slug }) => {
+          const res = await fetch(
+            `${apiUrl.replace(/\/$/, "")}/mangrove-extent-history?municipio=${encodeURIComponent(slug)}`,
+          );
+          const body = await res.json();
+          if (!res.ok || !body.data) throw new Error(body.error ?? `HTTP ${res.status}`);
+          return new Map(body.data.years.map((y) => [y.year, y.areaHa]));
+        }),
+      );
+      this._areaSummary = municipios.map((m, i) => ({ ...m, areaByYear: series[i] }));
+      this._renderAreaSummary();
+    } catch (e) {
+      this._areaSummaryLoaded = false; // deixa a próxima abertura tentar de novo
+      wrap.textContent = "";
+      const err = document.createElement("div");
+      err.className = "history-error";
+      err.textContent = `Área por município indisponível: ${e.message}`;
+      wrap.appendChild(err);
+    }
+  }
+
+  // Sem fetch: redesenha com os dados já carregados (troca de ano no slider
+  // da Concentração ou de município no seletor).
+  _renderAreaSummary() {
+    const year = this._gmwExtentYear;
+    const yearEl = this.shadowRoot.getElementById("area-summary-year");
+    if (yearEl) yearEl.textContent = String(year);
+    const wrap = this.shadowRoot.getElementById("area-summary");
+    const select = this.shadowRoot.getElementById("history-municipio");
+    if (!wrap || !this._areaSummary) return;
+
+    const fmt = (ha) => `${ha.toLocaleString("pt-BR")} ha`;
+    const rows = [...this._areaSummary].sort(
+      (a, b) => (b.areaByYear.get(year) ?? 0) - (a.areaByYear.get(year) ?? 0),
+    );
+    wrap.textContent = "";
+    let total = 0;
+    for (const m of rows) {
+      const ha = m.areaByYear.get(year) ?? 0;
+      total += ha;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "area-row";
+      row.setAttribute("aria-pressed", String(select?.value === m.slug));
+      const name = document.createElement("span");
+      name.textContent = m.nome;
+      const value = document.createElement("span");
+      value.className = "cond-value";
+      value.textContent = fmt(ha);
+      row.append(name, value);
+      // Clicar na linha mostra o gráfico e a perda/ganho daquele município.
+      row.addEventListener("click", () => {
+        if (!select || select.value === m.slug) return;
+        select.value = m.slug;
+        select.dispatchEvent(new Event("change"));
+      });
+      wrap.appendChild(row);
+    }
+    const totalRow = document.createElement("div");
+    totalRow.className = "area-total";
+    const label = document.createElement("span");
+    label.textContent = "Total nos 3 municípios";
+    const value = document.createElement("span");
+    value.className = "cond-value";
+    value.textContent = fmt(total);
+    totalRow.append(label, value);
+    wrap.appendChild(totalRow);
   }
 
   _loadHistoryAndLoss() {
