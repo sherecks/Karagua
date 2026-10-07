@@ -44,13 +44,10 @@ export function MapPage() {
       {/* pointer-events-none: o cabeçalho cobre a faixa do topo inteira, mas
           o menu do mapa (dentro do componente, alinhado ao logo) precisa
           receber os cliques ali — só o logo volta a ser clicável. */}
-      <header className="pointer-events-none absolute top-0 inset-x-0 z-[1000] flex items-center gap-6 px-4 py-3 md:px-10 md:py-4">
+      <header className="pointer-events-none absolute top-0 inset-x-0 z-[1000] flex items-center px-4 py-3 md:px-10 md:py-4">
         <Link to="/" style={{ viewTransitionName: "brand-mark" }} className="pointer-events-auto">
           <img src="/logo-2.svg" alt="Karaguá" className="h-10 w-auto md:h-12" />
         </Link>
-        <span className="hidden md:inline text-label font-semibold tracking-[0.12em] uppercase text-white">
-          Mapa de Transparência
-        </span>
       </header>
 
       <div className="absolute inset-0">
