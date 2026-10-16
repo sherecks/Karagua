@@ -66,7 +66,7 @@ export function CtaFinal() {
             variants={fadeUp}
             className="mt-12 font-mono text-data text-k-ink-soft md:mt-16"
           >
-            Balneário Barra do Sul · Santa Catarina · Brasil
+            Baía da Babitonga · Santa Catarina · Brasil
           </motion.p>
         </motion.div>
 

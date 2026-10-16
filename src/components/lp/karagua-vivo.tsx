@@ -21,7 +21,8 @@ const phases = [
     n: "03",
     phase: "Piloto",
     status: "Planejado",
-    title: "Implantação do monitoramento georreferenciado nos 380 ha do piloto.",
+    title:
+      "Implantação do monitoramento georreferenciado nos 200 ha do piloto em São Francisco do Sul.",
   },
   {
     n: "04",

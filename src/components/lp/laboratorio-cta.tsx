@@ -46,9 +46,8 @@ export function LaboratorioCta() {
         </h2>
 
         <motion.p variants={fadeUp} className="measure mt-8 text-body text-k-ink-soft">
-          Um laboratório de impressão 3D em Balneário Barra do Sul, aberto e gratuito, onde
-          moradores projetam, imprimem e validam protótipos de ecobarreira para o território onde
-          vivem.
+          Um laboratório de impressão 3D em São Francisco do Sul, aberto e gratuito, onde moradores
+          projetam, imprimem e validam protótipos de ecobarreira para o território onde vivem.
         </motion.p>
 
         {/* Fatos-âncora */}

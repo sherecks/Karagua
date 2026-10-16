@@ -9,25 +9,24 @@ const STAT_NUM = "text-[clamp(1.5rem,2.4vw,2.25rem)] leading-[1.05] whitespace-n
 
 const stats = [
   {
-    display: "8.000 ha",
-    label: "de manguezal estimados na Baía da Babitonga",
-    ariaLabel: "até 8 mil hectares de manguezal estimados na Baía da Babitonga",
-    sources: [
-      { label: "Grupo Pro Babitonga, dados do ecossistema da Baía da Babitonga." },
-      { label: "Revista CEPSUL/ICMBio, Os manguezais e marismas da Baía Babitonga: uma síntese." },
-    ],
+    display: "6.200 ha",
+    label: "de manguezal na Baía da Babitonga",
+    ariaLabel: "6.200 hectares de manguezal na Baía da Babitonga",
+    sources: [{ label: "Ibama, manguezais da Baía da Babitonga." }],
   },
   {
-    display: "380 ha",
-    label: "área do piloto em Balneário Barra do Sul",
-    ariaLabel: "380 hectares de área do projeto piloto em Balneário Barra do Sul",
-    sources: [{ label: "Karaguá Ecotech, plano do projeto piloto." }],
+    display: "200 ha",
+    label: "área do piloto em São Francisco do Sul",
+    ariaLabel: "200 hectares de área do projeto piloto em São Francisco do Sul",
+    sources: [
+      { label: "Karaguá Ecotech, Karaguá Vivo em São Francisco do Sul (outubro de 2026)." },
+    ],
   },
   {
     display: "VM0033",
     label: "metodologia Verra de referência",
     ariaLabel: "VM0033, a metodologia Verra de referência para carbono azul",
-    sources: [{ label: "Verra, VM0033: Tidal Wetland and Seagrass Restoration." }],
+    sources: [{ label: "Verra, VM0033 v2.1: Tidal Wetland and Seagrass Restoration." }],
   },
 ];
 

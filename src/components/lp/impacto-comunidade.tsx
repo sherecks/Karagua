@@ -4,7 +4,7 @@ import { CountUp } from "@/components/lp/count-up";
 import { Section, SectionHeader } from "@/components/lp/section";
 import { EASE_OUT_QUART } from "@/lib/motion";
 
-// Metas (não tração): rotuladas como metas no PRD. "PSA estadual" é textual.
+// Metas (não tração): rotuladas como metas no PRD. "PSA municipal" é textual.
 const ptBR = (n: number) => Math.round(n).toLocaleString("pt-BR");
 
 type Point = {
@@ -26,7 +26,7 @@ const points: Point[] = [
     prefix: "+",
     format: (n: number) => Math.round(n).toString(),
     suffix: " famílias",
-    desc: "Meta de famílias remuneradas por serviços ambientais até 2035.",
+    desc: "Meta de famílias alcançadas pelo programa até 2030.",
   },
   {
     n: "02",
@@ -40,8 +40,8 @@ const points: Point[] = [
   {
     n: "03",
     label: "Marco legal",
-    text: "PSA estadual",
-    desc: "Pagamento por serviços ambientais com base na Lei estadual 15.133/2010; habilitação em curso.",
+    text: "PSA municipal",
+    desc: "Programa municipal de Pagamento por Serviços Ambientais proposto a São Francisco do Sul, com base na Lei federal 14.119/2021 e na Lei estadual 19.677/2025.",
   },
 ];
 
@@ -65,8 +65,8 @@ export function ImpactoComunidade() {
         eyebrow="Impacto e comunidade"
         title="Conservação que remunera quem a sustenta."
       >
-        O modelo vincula a geração de créditos à remuneração das comunidades locais e à partilha de
-        receita com os municípios, sob marco legal estadual.
+        O PSA remunera pescadores, maricultores e moradores pelo monitoramento e pela restauração. A
+        venda dos créditos sustenta o PSA e é repartida com o município.
       </SectionHeader>
 
       <div className="mt-10 grid gap-x-16 gap-y-10 md:mt-20 lg:grid-cols-[minmax(0,26rem)_1fr] lg:items-center">

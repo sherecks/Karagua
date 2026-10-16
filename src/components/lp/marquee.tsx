@@ -14,7 +14,7 @@ const ITEMS = [
   "Lastro georreferenciado, auditável",
   "Comunidade remunerada via PSA",
   "Primeiro projeto estruturado no Sul do Brasil",
-  "Validação Verra em curso",
+  "Metodologia Verra VM0033",
 ];
 
 const DURATION_S = 38; // lento e calmo — institucional, não publicitário
@@ -42,7 +42,7 @@ export function Marquee() {
     <div
       className="surface-primary overflow-hidden py-4"
       role="marquee"
-      aria-label="Princípios da Karaguá: carbono azul de manguezal estruturado no Sul do Brasil, com lastro auditável, comunidade remunerada e validação Verra em curso."
+      aria-label="Princípios da Karaguá: carbono azul de manguezal estruturado no Sul do Brasil, com lastro auditável, comunidade remunerada e metodologia Verra VM0033."
       onPointerEnter={() => setPaused(true)}
       onPointerLeave={() => setPaused(false)}
     >

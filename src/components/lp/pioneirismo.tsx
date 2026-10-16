@@ -10,12 +10,13 @@ const CLAIM =
 
 // Aterrissagem geográfica: contexto que sustenta o pioneirismo sem repetir o
 // tripé tecnologia/comunidade (esse já é a seção Diferencial). Fonte:
-// karagua-context/context/06 (piloto 380 ha; Babitonga = maior estuário de SC).
+// Karaguá Vivo em São Francisco do Sul, out. 2026 (piloto de 200 ha; a Babitonga
+// guarda cerca de 75% dos manguezais de SC, segundo o Ibama).
 const facts = [
   {
     label: "Piloto",
-    value: "Balneário Barra do Sul",
-    desc: "380 ha de manguezal onde o modelo é validado antes de escalar.",
+    value: "São Francisco do Sul",
+    desc: "200 ha de manguezal onde o modelo é validado antes de escalar.",
   },
   {
     label: "Escala",

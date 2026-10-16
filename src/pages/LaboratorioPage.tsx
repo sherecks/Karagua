@@ -28,7 +28,7 @@ const howItWorks = [
   },
   {
     lead: "6 bolsas de pesquisa",
-    rest: "para jovens do território e estudantes da Udesc e da Univille.",
+    rest: "para jovens do território e estudantes do IFC e da Univille em São Francisco do Sul.",
   },
   {
     lead: "Desenvolvimento e validação de protótipos de ecobarreira",
@@ -114,7 +114,7 @@ export function LaboratorioPage() {
             variants={fadeUp}
             className="text-label font-semibold tracking-[0.12em] text-k-deep uppercase"
           >
-            Lei Rouanet · Balneário Barra do Sul (SC)
+            Lei Rouanet · São Francisco do Sul (SC)
           </motion.p>
 
           {/* pb+mb (net zero): dá respiro à perna do "g" de "manguezal" (última
@@ -163,9 +163,9 @@ export function LaboratorioPage() {
             />
             <motion.div {...reveal} variants={stagger} className="measure flex flex-col gap-5">
               <motion.p variants={fadeUp} className="text-body text-k-ink-soft">
-                Balneário Barra do Sul vive em relação direta com o manguezal. Pescadores
-                artesanais, marisqueiras e moradores constroem seus modos de criar e viver a partir
-                da Baía da Babitonga.
+                São Francisco do Sul vive em relação direta com o manguezal. Pescadores artesanais,
+                marisqueiras e moradores constroem seus modos de criar e viver a partir da Baía da
+                Babitonga.
               </motion.p>
               <motion.p variants={fadeUp} className="text-body text-k-ink-soft">
                 O Laboratório Karaguá Vivo nasce para tornar a tecnologia parte desse modo de vida:
@@ -253,7 +253,7 @@ export function LaboratorioPage() {
               </motion.p>
               <motion.p variants={fadeUp} className="text-body text-k-ink-soft">
                 Levar a impressão 3D, até então restrita a centros urbanos e ambientes acadêmicos,
-                para Balneário Barra do Sul democratiza o acesso à inovação e conecta esse acesso à
+                para São Francisco do Sul democratiza o acesso à inovação e conecta esse acesso à
                 realidade do território costeiro.
               </motion.p>
             </motion.div>
