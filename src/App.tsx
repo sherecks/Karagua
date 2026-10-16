@@ -7,6 +7,7 @@ import { ImpactoComunidade } from "@/components/lp/impacto-comunidade";
 import { KaraguaVivo } from "@/components/lp/karagua-vivo";
 import { LaboratorioCta } from "@/components/lp/laboratorio-cta";
 import { Marquee } from "@/components/lp/marquee";
+import { Ods } from "@/components/lp/ods";
 import { Pioneirismo } from "@/components/lp/pioneirismo";
 // Portas ("Como engajar") fora da home a pedido do dono; componente preservado
 // em @/components/lp/portas para reuso futuro.
@@ -78,6 +79,7 @@ function LandingPage() {
           <Diferencial />
           <KaraguaVivo />
           <ImpactoComunidade />
+          <Ods />
           <Equipe />
           <Pioneirismo />
           <Marquee />

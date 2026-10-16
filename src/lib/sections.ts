@@ -9,6 +9,7 @@ export const NAV_SECTIONS: NavSection[] = [
   { id: "diferencial", label: "Diferencial" },
   { id: "como-funciona", label: "Modelo" },
   { id: "impacto", label: "Impacto" },
+  { id: "ods", label: "ODS" },
   { id: "equipe", label: "Equipe" },
   { id: "pioneirismo", label: "Pioneirismo" },
   { id: "contato", label: "Contato" },
