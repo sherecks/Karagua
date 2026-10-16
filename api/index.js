@@ -20,6 +20,9 @@ const {
   // Sem essa variável o endpoint responde 502 com mensagem clara — não
   // derruba o resto da API, então fica de fora da checagem obrigatória abaixo.
   NASA_EARTHDATA_TOKEN,
+  // Opcional: admins além do principal, como JSON
+  // '[{"email":"...","password":"..."}]'. Fica só no ambiente, nunca no código.
+  ADMIN_USERS,
   PORT = 4000,
 } = process.env;
 
@@ -34,6 +37,25 @@ for (const [name, value] of Object.entries({
     process.exit(1);
   }
 }
+
+// Variável malformada aborta o boot: melhor falhar no deploy do que aceitar
+// um admin pela metade sem ninguém perceber.
+let extraAdmins = [];
+try {
+  extraAdmins = JSON.parse(ADMIN_USERS || "[]");
+} catch {
+  extraAdmins = null;
+}
+if (
+  !Array.isArray(extraAdmins) ||
+  !extraAdmins.every(
+    (a) => typeof a?.email === "string" && a.email && typeof a?.password === "string" && a.password,
+  )
+) {
+  console.error('ADMIN_USERS inválida: esperado JSON [{"email":"...","password":"..."}]');
+  process.exit(1);
+}
+const ADMINS = [{ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }, ...extraAdmins];
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -78,8 +100,7 @@ app.post("/auth/login", (req, res) => {
   const ok =
     email &&
     password &&
-    timingSafeEqual(email, ADMIN_EMAIL) &&
-    timingSafeEqual(password, ADMIN_PASSWORD);
+    ADMINS.some((a) => timingSafeEqual(email, a.email) && timingSafeEqual(password, a.password));
   if (!ok) return res.status(401).json({ error: "Email ou senha incorretos." });
   const token = jwt.sign({ sub: "admin", email }, JWT_SECRET, { expiresIn: "7d" });
   res.json({ token });
