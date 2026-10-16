@@ -29,6 +29,12 @@ const members = [
     credencial: "Levantamentos de campo e mapeamento de áreas prioritárias de restauração.",
   },
   {
+    nome: "Samantha Schaefer",
+    papel: "Bióloga",
+    credencial:
+      "Análises de campo de vegetação, solo e água que embasam a medição do carbono azul.",
+  },
+  {
     nome: "Kaue Roeder",
     papel: "Pedagogia escolar",
     credencial: "Propostas educativas para a comunidade e público participante.",
