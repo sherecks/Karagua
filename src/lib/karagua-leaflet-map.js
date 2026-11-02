@@ -420,6 +420,24 @@ class KaraguaLeafletMap extends HTMLElement {
           font-weight: 600;
           color: #1A2332;
         }
+        /* Área de atuação (ver _renderActionArea): rótulo à esquerda, número à
+           direita, numa coluna estreita de 320px. */
+        .area-stats {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 6px 12px;
+          align-items: baseline;
+          margin: 6px 0 10px;
+        }
+        .area-stats .cond-value { text-align: right; }
+        .area-note { margin: 0 0 6px; }
+        .area-sources {
+          margin: 0;
+          font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+          font-size: 10.5px;
+          line-height: 1.45;
+          color: #52606e;
+        }
         .history-chart { display: block; overflow: visible; }
         .history-chart rect { transition: opacity 0.15s; }
         .history-chart rect:hover { opacity: 0.75; }
@@ -523,6 +541,9 @@ class KaraguaLeafletMap extends HTMLElement {
           </button>
           <button type="button" class="fw-rail-btn" data-fw-open="history" aria-controls="fw-history" aria-expanded="false" aria-label="Histórico do manguezal" title="Histórico do manguezal">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+          </button>
+          <button type="button" class="fw-rail-btn" data-fw-open="area" aria-controls="fw-area" aria-expanded="false" aria-label="Área de atuação" title="Área de atuação">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7 9 4l6 3 6-3v13l-6 3-6-3-6 3z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
           </button>
           <span class="fw-rail-sep" aria-hidden="true"></span>
           <slot name="menu-extra"></slot>
@@ -640,6 +661,15 @@ class KaraguaLeafletMap extends HTMLElement {
               <div class="hud-divider-h"></div>
               <p class="history-hint">Perda e ganho de manguezal entre 1996 e 2025, sempre pelo mesmo satélite/resolução.</p>
               <div id="loss-wrap"></div>
+            </div>
+          </section>
+          <section class="fw-window" id="fw-area" data-fw="area" role="dialog" aria-labelledby="fw-area-title" tabindex="-1" hidden>
+            <header class="fw-header">
+              <h2 class="fw-title" id="fw-area-title" tabindex="0">Área de atuação</h2>
+              <button type="button" class="fw-close" aria-label="Fechar Área de atuação">×</button>
+            </header>
+            <div class="fw-body" id="area-body">
+              <div class="history-loading">Calculando...</div>
             </div>
           </section>
         </div>
@@ -891,6 +921,96 @@ class KaraguaLeafletMap extends HTMLElement {
     return !!this._map;
   }
 
+  // Área de atuação: perímetro desenhado no mapa enquanto a janela está aberta,
+  // com manguezal, carbono e sequestro estimados pela API (/area-atuacao).
+  async _showActionArea() {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const body = this.shadowRoot.getElementById("area-body");
+    if (!apiUrl || !body) return;
+    if (!this._actionAreaData) {
+      try {
+        const res = await fetch(`${apiUrl.replace(/\/$/, "")}/area-atuacao?area=sumidouro`);
+        const json = await res.json();
+        if (!res.ok || !json.data) throw new Error(json.error ?? `HTTP ${res.status}`);
+        // Fonte externa fora do ar: mostra o que veio, mas tenta de novo na próxima abertura.
+        if (!json.data.solo.erro && !json.data.biomassa.erro) this._actionAreaData = json.data;
+        this._renderActionArea(json.data);
+      } catch (e) {
+        body.textContent = "";
+        const err = document.createElement("div");
+        err.className = "history-error";
+        err.textContent = `Área de atuação indisponível: ${e.message}`;
+        body.appendChild(err);
+        return;
+      }
+    } else {
+      this._renderActionArea(this._actionAreaData);
+    }
+    if (!this._windows?.isOpen("area")) return; // fechou enquanto carregava
+    const d = this._actionAreaData ?? null;
+    const geometry = d?.geometry ?? this._lastActionAreaGeometry;
+    if (!geometry || this._actionAreaLayer) return;
+    this._actionAreaLayer = L.geoJSON(geometry, {
+      style: { color: "#c7d926", weight: 2.5, fillColor: "#c7d926", fillOpacity: 0.12 },
+      interactive: false,
+    }).addTo(this._map);
+    // No desktop a janela fica à direita: sobra espaço para ela não cobrir o perímetro.
+    const wide = window.matchMedia("(min-width: 768px)").matches;
+    this._map.fitBounds(this._actionAreaLayer.getBounds(), {
+      paddingTopLeft: [40, 90],
+      paddingBottomRight: [wide ? 400 : 40, 40],
+    });
+  }
+
+  _renderActionArea(d) {
+    this._lastActionAreaGeometry = d.geometry;
+    const body = this.shadowRoot.getElementById("area-body");
+    const n = (v, dec = 0) =>
+      v.toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    const rows = [
+      ["Área total", `${n(d.areaHa, 1)} ha`],
+      ["Manguezal em 2025", `${n(d.manguezal.ha2025)} ha`],
+      ["Manguezal em 1996", `${n(d.manguezal.ha1996)} ha`],
+      ...(d.solo.erro
+        ? [["Carbono no solo", "indisponível"]]
+        : [
+            ["Carbono no solo (0-100 cm)", `${n(d.solo.tCHa)} tC/ha`],
+            [`Estoque no solo (${n(d.solo.haComDado)} ha)`, `${n(d.solo.totalTCO2e)} tCO₂e`],
+          ]),
+      [
+        "Carbono na biomassa aérea",
+        d.biomassa.erro ? "indisponível" : `${n(d.biomassa.tCHa)} tC/ha`,
+      ],
+      ["Sequestro no solo", `${n(d.sequestro.soloTCO2eHaAno, 1)} tCO₂e/ha/ano`],
+      ["Sequestro na biomassa", `${n(d.sequestro.biomassaTCO2eHaAno, 1)} tCO₂e/ha/ano`],
+    ];
+    body.textContent = "";
+    const title = document.createElement("p");
+    title.className = "point-detail-title";
+    title.textContent = d.nome;
+    const grid = document.createElement("div");
+    grid.className = "area-stats";
+    for (const [label, value] of rows) {
+      const l = document.createElement("span");
+      l.className = "cond-label";
+      l.textContent = label;
+      const v = document.createElement("span");
+      v.className = "cond-value";
+      v.textContent = value;
+      grid.append(l, v);
+    }
+    const note = document.createElement("p");
+    note.className = "history-hint area-note";
+    note.textContent =
+      "Estimativa por satélite e fatores padrão do IPCC para área em restauração. Não substitui o inventário de campo exigido pela VM0033 e não cobre restinga.";
+    const sources = document.createElement("p");
+    sources.className = "area-sources";
+    sources.textContent = [d.manguezal.fonte, d.solo.fonte, d.biomassa.fonte, d.sequestro.fonte]
+      .filter(Boolean)
+      .join(" · ");
+    body.append(title, grid, note, sources);
+  }
+
   // Barra de botões + janelas flutuantes (map-floating-windows.js). Todas
   // começam fechadas. O Histórico só busca os dados na 1ª vez que a janela
   // abre — é o request mais pesado do mapa.
@@ -900,9 +1020,16 @@ class KaraguaLeafletMap extends HTMLElement {
       this.shadowRoot.getElementById("fw-layer"),
       {
         onOpen: (id) => {
+          if (id === "area") void this._showActionArea();
           if (id !== "history") return;
           if (!this._historyLoaded) this._loadHistoryAndLoss();
           void this._loadAreaSummary();
+        },
+        onClose: (id) => {
+          if (id === "area" && this._actionAreaLayer) {
+            this._map.removeLayer(this._actionAreaLayer);
+            this._actionAreaLayer = null;
+          }
         },
       },
     );

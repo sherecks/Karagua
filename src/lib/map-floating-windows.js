@@ -178,12 +178,13 @@ export class FloatingWindows {
   /**
    * @param {ShadowRoot} root   onde estão a barra e as janelas
    * @param {HTMLElement} layer camada que contém as janelas (define os limites)
-   * @param {{ onOpen?: (id: string) => void }} [options]
+   * @param {{ onOpen?: (id: string) => void, onClose?: (id: string) => void }} [options]
    */
-  constructor(root, layer, { onOpen } = {}) {
+  constructor(root, layer, { onOpen, onClose } = {}) {
     this._root = root;
     this._layer = layer;
     this._onOpen = onOpen;
+    this._onClose = onClose;
     this._zTop = 1;
     this._openCount = 0; // para a cascata de posição inicial
     this._positions = this._readPositions();
@@ -257,6 +258,7 @@ export class FloatingWindows {
     w.el.hidden = true;
     w.button?.setAttribute("aria-expanded", "false");
     if (restoreFocus) w.button?.focus({ preventScroll: true });
+    this._onClose?.(id);
   }
 
   _bringToFront(el) {

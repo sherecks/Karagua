@@ -564,7 +564,10 @@ let socImagePromise = null;
 function getSocImage() {
   if (!socImagePromise) {
     socImagePromise = (async () => {
-      const tiff = await geotiffFromUrl(SOC_URL);
+      // Zenodo responde 403 a pedidos sem User-Agent (o fetch do Node não manda um).
+      const tiff = await geotiffFromUrl(SOC_URL, {
+        headers: { "User-Agent": "KaraguaAPI/1.0 (+https://karagua.com.br)" },
+      });
       const image = await tiff.getImage();
       return {
         image,
@@ -973,9 +976,48 @@ app.get("/mangrove-loss-map", async (req, res) => {
 // Cobertura: só os tiles recortados em api/data/gmw-v4112 (lon -49 a -48).
 // Joinville passa um pouco a oeste de -49 (até -49,20), mas essa faixa é Serra
 // do Mar, longe da costa — não tem manguezal a contar ali.
-async function computeMunicipioGmwStats(slug) {
-  const municipio = await getMunicipioPolygon(slug);
-  const [west, south, east, north] = municipio.bbox;
+// Visita, na grade NATIVA de um raster ({ image, bbox, width, height }), os
+// pixels cujo centro cai dentro dos polígonos (varredura por linha, par/ímpar).
+// `visit(i, pixelHa, bands)`: i indexa a janela lida; bands = as `samples` pedidas.
+async function forEachPixelInPolygons(
+  raster,
+  polygons,
+  [west, south, east, north],
+  samples,
+  visit,
+) {
+  const [tw, ts, te, tn] = raster.bbox;
+  const resX = (te - tw) / raster.width;
+  const resY = (tn - ts) / raster.height;
+  const xMin = Math.max(0, Math.floor((west - tw) / resX));
+  const xMax = Math.min(raster.width, Math.ceil((east - tw) / resX));
+  const yMin = Math.max(0, Math.floor((tn - north) / resY));
+  const yMax = Math.min(raster.height, Math.ceil((tn - south) / resY));
+  if (xMax <= xMin || yMax <= yMin) return;
+  const width = xMax - xMin;
+
+  const bands = await raster.image.readRasters({ window: [xMin, yMin, xMax, yMax], samples });
+  for (let y = yMin; y < yMax; y++) {
+    const lat = tn - (y + 0.5) * resY;
+    const pixelHa =
+      (resX *
+        METERS_PER_DEGREE_LAT *
+        Math.cos((lat * Math.PI) / 180) *
+        (resY * METERS_PER_DEGREE_LAT)) /
+      10_000;
+    const xs = polygonRowCrossings(polygons, lat);
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      // Pixels cujo centro (tw + (x + 0.5) * resX) cai entre xs[k] e xs[k+1].
+      const from = Math.max(xMin, Math.ceil((xs[k] - tw) / resX - 0.5));
+      const to = Math.min(xMax - 1, Math.floor((xs[k + 1] - tw) / resX - 0.5));
+      for (let x = from; x <= to; x++) visit((y - yMin) * width + (x - xMin), pixelHa, bands);
+    }
+  }
+}
+
+// Área de manguezal por ano (1996-2025) e perda/ganho 1996→2025 dentro de
+// polígonos quaisquer: municípios (abaixo) e áreas de atuação (AREAS).
+async function computeGmwStatsForPolygons(polygons, bbox) {
   const years = GMW_FULL_HISTORY_YEARS;
   const samples = years.map((year) => year - GMW_RECENT_YEAR_START);
   const areaHaByYear = new Float64Array(years.length);
@@ -983,54 +1025,22 @@ async function computeMunicipioGmwStats(slug) {
   let gainHa = 0;
   let stableHa = 0;
 
-  const tilePaths = integerTilesForBbox(west, south, east, north).map(gmwRecentTilePath);
+  const tilePaths = integerTilesForBbox(...bbox).map(gmwRecentTilePath);
   const tiles = (await Promise.all(tilePaths.map(getGmwRecentImage))).filter(Boolean);
   for (const tile of tiles) {
-    const [tw, ts, te, tn] = tile.bbox;
-    const resX = (te - tw) / tile.width;
-    const resY = (tn - ts) / tile.height;
-    const xMin = Math.max(0, Math.floor((west - tw) / resX));
-    const xMax = Math.min(tile.width, Math.ceil((east - tw) / resX));
-    const yMin = Math.max(0, Math.floor((tn - north) / resY));
-    const yMax = Math.min(tile.height, Math.ceil((tn - south) / resY));
-    if (xMax <= xMin || yMax <= yMin) continue;
-    const width = xMax - xMin;
-
-    const bands = await tile.image.readRasters({ window: [xMin, yMin, xMax, yMax], samples });
-    const first = bands[0];
-    const last = bands[bands.length - 1];
-    for (let y = yMin; y < yMax; y++) {
-      const lat = tn - (y + 0.5) * resY;
-      const pixelHa =
-        (resX *
-          METERS_PER_DEGREE_LAT *
-          Math.cos((lat * Math.PI) / 180) *
-          (resY * METERS_PER_DEGREE_LAT)) /
-        10_000;
-      const xs = polygonRowCrossings(municipio.polygons, lat);
-      for (let k = 0; k + 1 < xs.length; k += 2) {
-        // Pixels cujo centro (tw + (x + 0.5) * resX) cai entre xs[k] e xs[k+1].
-        const from = Math.max(xMin, Math.ceil((xs[k] - tw) / resX - 0.5));
-        const to = Math.min(xMax - 1, Math.floor((xs[k + 1] - tw) / resX - 0.5));
-        for (let x = from; x <= to; x++) {
-          const i = (y - yMin) * width + (x - xMin);
-          for (let b = 0; b < bands.length; b++) {
-            if (bands[b][i] > 0) areaHaByYear[b] += pixelHa;
-          }
-          const was = first[i] > 0;
-          const is = last[i] > 0;
-          if (was && !is) lossHa += pixelHa;
-          else if (!was && is) gainHa += pixelHa;
-          else if (was && is) stableHa += pixelHa;
-        }
+    await forEachPixelInPolygons(tile, polygons, bbox, samples, (i, pixelHa, bands) => {
+      for (let b = 0; b < bands.length; b++) {
+        if (bands[b][i] > 0) areaHaByYear[b] += pixelHa;
       }
-    }
+      const was = bands[0][i] > 0;
+      const is = bands[bands.length - 1][i] > 0;
+      if (was && !is) lossHa += pixelHa;
+      else if (!was && is) gainHa += pixelHa;
+      else if (was && is) stableHa += pixelHa;
+    });
   }
 
   return {
-    slug,
-    municipio: MUNICIPIOS[slug].nome,
-    bbox: municipio.bbox,
     years: years.map((year, b) => ({ year, areaHa: Math.round(areaHaByYear[b]) })),
     loss: {
       fromYear: years[0],
@@ -1041,6 +1051,12 @@ async function computeMunicipioGmwStats(slug) {
       source: "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m",
     },
   };
+}
+
+async function computeMunicipioGmwStats(slug) {
+  const municipio = await getMunicipioPolygon(slug);
+  const stats = await computeGmwStatsForPolygons(municipio.polygons, municipio.bbox);
+  return { slug, municipio: MUNICIPIOS[slug].nome, bbox: municipio.bbox, ...stats };
 }
 
 // Sem TTL: os tiles são arquivos locais versionados e a malha do IBGE não
@@ -1078,6 +1094,185 @@ app.get("/mangrove-loss", async (req, res) => {
   try {
     const { municipio, loss } = await getMunicipioGmwStats(slug);
     res.set("Cache-Control", "public, max-age=3600").json({ data: { slug, municipio, ...loss } });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ── Áreas de atuação: carbono estimado por sensoriamento remoto ────────────
+// Responde "quanto manguezal e quanto carbono há neste polígono" com as
+// mesmas camadas do mapa, contadas pixel a pixel dentro do perímetro. É
+// estimativa remota com fatores padrão: NÃO substitui o inventário de campo
+// que a VM0033 exige, e não cobre restinga (as bases de carbono são só de
+// manguezal). O polígono é o que a equipe definiu como área de atuação.
+const AREAS = {
+  sumidouro: { nome: "Área de atuação Sumidouro", file: "areas/sumidouro.geojson" },
+};
+
+// IPCC 2013 Wetlands Supplement, cap. 4, manguezal no domínio subtropical.
+const IPCC_MANGROVE = {
+  carbonFraction: 0.451, // Tabela 4.2: tC por t de matéria seca
+  agbGrowth: 18.1, // Tabela 4.4: t m.s./ha/ano, só até o estoque de equilíbrio
+  rootShoot: 0.964, // Tabela 4.5: raiz/parte aérea
+  soilAccumTCHaYr: 1.62, // Tabela 4.12: acúmulo no solo após revegetação
+};
+const C_TO_CO2 = 44 / 12;
+
+function insidePolygons(lon, lat, polygons) {
+  const xs = polygonRowCrossings(polygons, lat);
+  for (let k = 0; k + 1 < xs.length; k += 2) if (lon >= xs[k] && lon < xs[k + 1]) return true;
+  return false;
+}
+
+// Área geodésica (esfera de raio médio) somando anéis com sinal: buracos descontam.
+function polygonsAreaHa(polygons) {
+  const R = 6_371_008.8;
+  const rad = Math.PI / 180;
+  let total = 0;
+  for (const rings of polygons) {
+    rings.forEach((ring, r) => {
+      let a = 0;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const [x1, y1] = ring[i];
+        const [x2, y2] = ring[i + 1];
+        a += (x2 - x1) * rad * (2 + Math.sin(y1 * rad) + Math.sin(y2 * rad));
+      }
+      total += (r === 0 ? 1 : -1) * Math.abs((a * R * R) / 2);
+    });
+  }
+  return total / 10_000;
+}
+
+// Aceita Polygon, MultiPolygon ou um LineString fechado (como o perímetro
+// veio desenhado); fecha o anel se o último ponto não repete o primeiro.
+function loadAreaPolygons(file) {
+  const geojson = JSON.parse(fs.readFileSync(path.join(__dirname, "data", file), "utf8"));
+  const g = geojson.geometry ?? geojson;
+  const close = (ring) => {
+    const [a, b] = [ring[0], ring[ring.length - 1]];
+    return a[0] === b[0] && a[1] === b[1] ? ring : [...ring, a];
+  };
+  const polygons =
+    g.type === "LineString"
+      ? [[close(g.coordinates)]]
+      : g.type === "Polygon"
+        ? [g.coordinates.map(close)]
+        : g.type === "MultiPolygon"
+          ? g.coordinates.map((p) => p.map(close))
+          : null;
+  if (!polygons) throw new Error(`geometria ${g.type} não suportada em ${file}`);
+  const pts = polygons.flat(2);
+  const bbox = [
+    Math.min(...pts.map((p) => p[0])),
+    Math.min(...pts.map((p) => p[1])),
+    Math.max(...pts.map((p) => p[0])),
+    Math.max(...pts.map((p) => p[1])),
+  ];
+  return { polygons, bbox };
+}
+
+async function computeAreaStats(slug) {
+  const { polygons, bbox } = loadAreaPolygons(AREAS[slug].file);
+  const [west, south, east, north] = bbox;
+  const gmw = await computeGmwStatsForPolygons(polygons, bbox);
+  const byYear = Object.fromEntries(gmw.years.map((y) => [y.year, y.areaHa]));
+
+  // Carbono orgânico do solo (0-100 cm), só nos pixels com dado (manguezal).
+  let solo;
+  try {
+    const soc = await getSocImage();
+    let ha = 0;
+    let tC = 0;
+    await forEachPixelInPolygons(soc, polygons, bbox, [0], (i, pixelHa, [band]) => {
+      if (band[i] > 0) {
+        ha += pixelHa;
+        tC += band[i] * pixelHa;
+      }
+    });
+    solo = {
+      haComDado: Math.round(ha),
+      tCHa: ha > 0 ? Math.round(tC / ha) : 0,
+      totalTC: Math.round(tC),
+      totalTCO2e: Math.round(tC * C_TO_CO2),
+      fonte: `Sanderman et al. 2018, atualização 2023 · 0-100 cm, 30 m (${SOC_PERIOD})`,
+    };
+  } catch (e) {
+    solo = { erro: e.message };
+  }
+
+  // Biomassa acima do solo (ESA CCI, 100 m) na grade nativa: média de todos os
+  // pixels da área, não só manguezal (o produto é de floresta em geral).
+  let biomassa;
+  try {
+    const url =
+      `${ESA_AGB_NCSS_URL}?var=agb&north=${north}&south=${south}&east=${east}&west=${west}` +
+      `&horizStride=1&accept=netcdf`;
+    const upstream = await fetch(url);
+    if (!upstream.ok) throw new Error(`ESA THREDDS respondeu ${upstream.status}`);
+    const reader = new NetCDFReader(Buffer.from(await upstream.arrayBuffer()));
+    const lats = reader.getDataVariable("lat");
+    const lons = reader.getDataVariable("lon");
+    const agb = reader.getDataVariable("agb");
+    let sum = 0;
+    let n = 0;
+    for (let r = 0; r < lats.length; r++) {
+      for (let c = 0; c < lons.length; c++) {
+        if (!insidePolygons(lons[c], lats[r], polygons)) continue;
+        const v = agb[r * lons.length + c];
+        sum += Number.isFinite(v) ? v : 0;
+        n++;
+      }
+    }
+    if (!n) throw new Error("nenhum pixel da ESA dentro da área");
+    const mgHa = sum / n;
+    biomassa = {
+      mgHa: Math.round(mgHa),
+      tCHa: Math.round(mgHa * IPCC_MANGROVE.carbonFraction),
+      fonte: `ESA CCI Biomass v7.0 (${ESA_AGB_YEAR}), 100 m · fração de carbono 0,451 (IPCC)`,
+    };
+  } catch (e) {
+    biomassa = { erro: e.message };
+  }
+
+  const { agbGrowth, rootShoot, carbonFraction, soilAccumTCHaYr } = IPCC_MANGROVE;
+  const biomassTCHaYr = agbGrowth * (1 + rootShoot) * carbonFraction;
+  return {
+    slug,
+    nome: AREAS[slug].nome,
+    areaHa: Math.round(polygonsAreaHa(polygons) * 10) / 10,
+    geometry: { type: "MultiPolygon", coordinates: polygons },
+    manguezal: {
+      ha1996: byYear[1996],
+      ha2025: byYear[2025],
+      fonte: "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat",
+    },
+    solo,
+    biomassa,
+    sequestro: {
+      soloTCO2eHaAno: Math.round(soilAccumTCHaYr * C_TO_CO2 * 10) / 10,
+      biomassaTCO2eHaAno: Math.round(biomassTCHaYr * C_TO_CO2 * 10) / 10,
+      fonte:
+        "IPCC 2013 Wetlands Supplement, cap. 4: tabelas 4.2, 4.4, 4.5 e 4.12 (manguezal subtropical, fator padrão Tier 1)",
+      nota: "Fatores padrão para área em restauração; a biomassa só cresce nesse ritmo até atingir o estoque de equilíbrio. Não é medição.",
+    },
+  };
+}
+
+// Sem TTL: perímetro e camadas são fixos até o próximo deploy.
+const areaStatsCache = new Map();
+app.get("/area-atuacao", async (req, res) => {
+  const slug = req.query.area;
+  if (!Object.hasOwn(AREAS, slug)) return res.status(400).json({ error: "área desconhecida" });
+  if (!areaStatsCache.has(slug)) {
+    const promise = computeAreaStats(slug);
+    areaStatsCache.set(slug, promise);
+    promise.catch(() => areaStatsCache.delete(slug));
+  }
+  try {
+    const data = await areaStatsCache.get(slug);
+    // Falha de fonte externa (Zenodo, ESA) não fica presa no cache.
+    if (data.solo.erro || data.biomassa.erro) areaStatsCache.delete(slug);
+    res.set("Cache-Control", "public, max-age=3600").json({ data });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
