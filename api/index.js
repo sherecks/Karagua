@@ -702,8 +702,10 @@ const MUNICIPIOS = {
 };
 const DEFAULT_MUNICIPIO = "balneario-barra-do-sul";
 
-const ibgeMalhaUrl = (code) =>
-  `https://servicodados.ibge.gov.br/api/v3/malhas/municipios/${code}?formato=application/vnd.geo+json&qualidade=maxima`;
+// Malhas do IBGE (API v3, qualidade máxima) salvas em data/municipios/<código>.geojson:
+// o servidor do Railway deixou de alcançar servicodados.ibge.gov.br ("fetch failed")
+// e o limite municipal não muda. Para atualizar, baixe de novo de
+// https://servicodados.ibge.gov.br/api/v3/malhas/municipios/<código>?formato=application/vnd.geo+json&qualidade=maxima
 
 function municipioFromQuery(req) {
   const slug = req.query.municipio ?? DEFAULT_MUNICIPIO;
@@ -714,9 +716,8 @@ const municipioPolygonCache = new Map(); // slug -> Promise<{ polygons, bbox }>
 function getMunicipioPolygon(slug) {
   if (municipioPolygonCache.has(slug)) return municipioPolygonCache.get(slug);
   const promise = (async () => {
-    const res = await fetch(ibgeMalhaUrl(MUNICIPIOS[slug].code));
-    if (!res.ok) throw new Error(`IBGE Malhas Municipais respondeu ${res.status}`);
-    const geojson = await res.json();
+    const file = path.join(__dirname, "data", "municipios", `${MUNICIPIOS[slug].code}.geojson`);
+    const geojson = JSON.parse(await fs.promises.readFile(file, "utf8"));
     const geometry = geojson.features[0].geometry;
     // A malha pode vir como Polygon ou MultiPolygon (São Francisco do Sul
     // tem ilhas) — normaliza pra sempre trabalhar com uma lista de polígonos.
