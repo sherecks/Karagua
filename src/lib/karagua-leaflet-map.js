@@ -223,15 +223,6 @@ class KaraguaLeafletMap extends HTMLElement {
           filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
         }
         .wind-canvas { pointer-events: none; }
-        /* Mapa de calor de concentração (GMW): densidade + cor (azul→verde→
-           amarelo→vermelho) já vêm prontas do canvas em _refreshGmwExtent
-           (_heatColor) — o blur aqui só amacia o serrilhado da grade, mesma
-           técnica do SOC/Perda-Ganho abaixo. Não tem mais filtro SVG à
-           parte: as 3 camadas de calor agora passam pelo mesmo pipeline
-           (cor calculada em JS + blur), só muda a paleta de cada uma. */
-        .gmw-heat-tint {
-          filter: blur(3px);
-        }
         /* Carbono orgânico do solo e Perda/Ganho: sem regra de blur aqui —
            as duas viraram polígono vetorial (contorno de marching squares
            sobre a máscara 0/1), não mais raster+filter. Ver
@@ -1402,14 +1393,10 @@ class KaraguaLeafletMap extends HTMLElement {
     return group;
   }
 
-  // ── Mapa de calor de concentração de manguezal (Global Mangrove Watch v4.1
-  // Timeseries) ────────────────────────────────────────────────────────────
-  // Sentinel-2/Landsat a 10m. Passa pela nossa API (decodifica o GeoTIFF
-  // categórico no servidor) e o resultado (máscara binária: é/não é
-  // manguezal) vira densidade local por vizinhança (_neighborhoodAverage)
-  // pintada em canvas aqui no cliente — _heatColor então converte essa
-  // densidade num gradiente de calor de verdade (azul→vermelho), não um
-  // preenchimento sólido de uma cor só.
+  // ── Concentração de manguezal (Global Mangrove Watch v4.1 Timeseries) ───
+  // Passa pela nossa API (decodifica o GeoTIFF categórico no servidor) e a
+  // máscara binária (é/não é manguezal) vira contorno vetorial branco
+  // listrado aqui no cliente (ver _refreshGmwExtent).
   // Todo ano de 1996 a 2025 tem dado real (mesma faixa do back-end,
   // GMW_FULL_HISTORY_YEARS em api/index.js) — o v4.1.12 é anual, sem os
   // buracos que o v3 antigo tinha. O slider anda por ÍNDICE nessa lista.
@@ -1490,69 +1477,46 @@ class KaraguaLeafletMap extends HTMLElement {
     }
     if (requestId !== this._gmwExtentRequestId) return;
 
-    // Densidade local (0-1) por célula via tabela de somas — não é só "tem
-    // manguezal aqui", é "que fração da vizinhança tem manguezal": célula
-    // isolada tem vizinhança majoritariamente vazia (densidade baixa), célula
-    // no meio de uma mancha grande tem vizinhança quase toda ligada
-    // (densidade alta). Testado: pintar a máscara binária opaca e só confiar
-    // no blur do CSS não funciona — qualquer mancha mais larga que o raio do
-    // blur fica com o miolo inteiro saturado (sempre vermelho, sem gradiente).
-    // A densidade calculada aqui já é o gradiente; o blur do CSS só amacia o
-    // serrilhado da grade.
-    const smoothRadius = KaraguaLeafletMap._adaptiveSmoothRadius(
-      b.getWest(),
-      b.getSouth(),
-      b.getEast(),
-      b.getNorth(),
+    // Contorno vetorial branco com listras diagonais, mesmo pipeline da
+    // Perda/Ganho e do SOC (marching squares sobre a máscara 0/1): branco
+    // listrado não disputa cor com perda (vermelho), ganho (verde) e solo
+    // (azul) quando as camadas se sobrepõem.
+    const mask = KaraguaLeafletMap._denoiseSparseMask(data.mangrove, data.cols, data.rows);
+    if (this._gmwExtentLayer) this._map.removeLayer(this._gmwExtentLayer);
+    this._gmwExtentLayer = L.layerGroup([], { pane: "gmwPane" }).addTo(this._map);
+    KaraguaLeafletMap._addClassPolygons(
+      this._gmwExtentLayer,
+      mask,
       data.cols,
       data.rows,
+      b,
+      "gmwPane",
+      [255, 255, 255],
+      [255, 255, 255],
+      { fillColor: "url(#gmw-stripes)", fillOpacity: 1 },
     );
-    const density = KaraguaLeafletMap._neighborhoodAverage(
-      data.mangrove,
-      data.cols,
-      data.rows,
-      smoothRadius,
-    );
-
-    const canvas = document.createElement("canvas");
-    canvas.width = data.cols;
-    canvas.height = data.rows;
-    const ctx = canvas.getContext("2d");
-    const img = ctx.createImageData(data.cols, data.rows);
-    for (let i = 0; i < density.length; i++) {
-      const t = density[i];
-      if (t <= 0) continue;
-      const o = i * 4;
-      const [r, g, bl] = KaraguaLeafletMap._heatColor(t);
-      img.data[o] = r;
-      img.data[o + 1] = g;
-      img.data[o + 2] = bl;
-      img.data[o + 3] = Math.min(255, Math.round(25 + t * 230));
-    }
-    ctx.putImageData(img, 0, 0);
-    const url = canvas.toDataURL("image/png");
-
-    const bounds = [
-      [b.getSouth(), b.getWest()],
-      [b.getNorth(), b.getEast()],
-    ];
-    if (this._gmwExtentLayer) {
-      this._gmwExtentLayer.setUrl(url);
-      this._gmwExtentLayer.setBounds(bounds);
-    } else {
-      this._gmwExtentLayer = L.imageOverlay(url, bounds, {
-        pane: "gmwPane",
-        className: "gmw-heat-tint",
-        opacity: 0.85,
-        interactive: false,
-      }).addTo(this._map);
-    }
+    this._ensureStripePattern();
 
     const credit = this.shadowRoot.getElementById("gmw-extent-credit");
     if (credit) {
       const source = "Global Mangrove Watch v4.1 Timeseries · Sentinel-2/Landsat, 10m";
       credit.textContent = `≈ ${data.areaHa.toLocaleString("pt-BR")} ha na área visível · ${source} (${data.year})`;
     }
+  }
+
+  // O <pattern> precisa morar no MESMO <svg> que o Leaflet cria pro
+  // gmwPane: url(#id) não atravessa SVGs dentro do shadow DOM de forma
+  // confiável. Idempotente: o renderer do pane persiste entre redesenhos.
+  _ensureStripePattern() {
+    const svg = this._map.getPane("gmwPane").querySelector("svg");
+    if (!svg || svg.querySelector("#gmw-stripes")) return;
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    defs.innerHTML = `
+      <pattern id="gmw-stripes" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)">
+        <rect width="7" height="7" fill="rgba(255,255,255,0.14)"></rect>
+        <line x1="1.5" y1="0" x2="1.5" y2="7" stroke="#fff" stroke-width="2.4" stroke-opacity="0.85"></line>
+      </pattern>`;
+    svg.prepend(defs);
   }
 
   // ── Perda de manguezal, ONDE (1996→2025) ────────────────────────────────
@@ -1983,16 +1947,6 @@ class KaraguaLeafletMap extends HTMLElement {
     return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" class="history-chart">${bars}</svg>`;
   }
 
-  // Gradiente de calor azul→verde→amarelo→vermelho pra densidade do GMW
-  // (0-1) — mesmos 6 pontos que o filtro SVG #concentration-heat usava
-  // antes (feComponentTransfer type="table"), só que calculado aqui em JS
-  // pra pintar a cor final direto no canvas, igual SOC e Perda/Ganho já
-  // fazem. Unifica os 3: um só passa por blur no CSS, nenhum por um
-  // filtro à parte — antes só o GMW tinha esse segundo filtro, e por isso
-  // não "batia" visualmente com as outras duas camadas de calor.
-  static _HEAT_TABLE_R = [0.08, 0.08, 0.16, 0.82, 0.9, 0.78];
-  static _HEAT_TABLE_G = [0.24, 0.55, 0.71, 0.82, 0.47, 0.12];
-  static _HEAT_TABLE_B = [0.47, 0.71, 0.31, 0.16, 0.12, 0.12];
   // Mesma interpolação linear por trecho que type="table" faz no SVG: os
   // N valores dividem [0,1] em N-1 trechos iguais, interpola dentro do
   // trecho que `t` cai.
@@ -2004,14 +1958,6 @@ class KaraguaLeafletMap extends HTMLElement {
     const k = Math.floor(pos);
     return table[k] + (pos - k) * (table[k + 1] - table[k]);
   }
-  static _heatColor(t) {
-    return [
-      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._HEAT_TABLE_R, t) * 255),
-      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._HEAT_TABLE_G, t) * 255),
-      Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._HEAT_TABLE_B, t) * 255),
-    ];
-  }
-
   // SOC e Perda/Ganho antes só interpolavam entre 2 cores (ou, no caso de
   // Perda/Ganho, nem isso — cor sólida fixa, só a opacidade variava com a
   // densidade). Contra o gradiente de 6 pontos do GMW acima, ficavam sem
@@ -2053,46 +1999,6 @@ class KaraguaLeafletMap extends HTMLElement {
       Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._GAIN_TABLE_G, t)),
       Math.round(KaraguaLeafletMap._heatTableLookup(KaraguaLeafletMap._GAIN_TABLE_B, t)),
     ];
-  }
-
-  // Raio de suavização em METROS reais, não em células — ver
-  // _adaptiveSmoothRadius logo abaixo pra por que isso importa (célula
-  // não tem tamanho fixo: a grade sempre cabe em ~300 células não importa
-  // o zoom, então célula representa mais chão conforme afasta). 50m foi
-  // calibrado a partir do raio antigo (5 células fixas), que já tinha sido
-  // testado e aprovado visualmente — só que naquele teste, a 5 células
-  // correspondiam a ~50m reais; agora isso vira o alvo em vez do número
-  // de células em si.
-  static _SMOOTH_TARGET_METERS = 50;
-  static _METERS_PER_DEGREE_LAT = 111_320;
-
-  // Converte o alvo em metros pra um raio em células pra essa grade
-  // específica (bbox + cols/rows mudam a cada fetch, então o raio em
-  // células muda junto — mais células de raio quando dá zoom, menos
-  // quando afasta). Sem isso, um raio fixo em células passa a representar
-  // uma área real cada vez maior conforme o usuário afasta o zoom, e a
-  // mancha borrada descola do lugar de verdade (era o bug relatado).
-  // `targetMeters` default é o do GMW; SOC/Perda-Ganho passam o deles
-  // (maiores, ver acima). Clampado entre 1 (nunca desliga a suavização,
-  // senão os quadrados da grade voltam) e 16 (nunca deixa uma única
-  // mancha engolir a grade inteira quando o zoom está bem próximo).
-  static _adaptiveSmoothRadius(
-    west,
-    south,
-    east,
-    north,
-    cols,
-    rows,
-    targetMeters = KaraguaLeafletMap._SMOOTH_TARGET_METERS,
-  ) {
-    const centerLat = (south + north) / 2;
-    const metersPerDegreeLng =
-      KaraguaLeafletMap._METERS_PER_DEGREE_LAT * Math.cos((centerLat * Math.PI) / 180);
-    const cellWidthM = ((east - west) / cols) * metersPerDegreeLng;
-    const cellHeightM = ((north - south) / rows) * KaraguaLeafletMap._METERS_PER_DEGREE_LAT;
-    const cellSizeM = (cellWidthM + cellHeightM) / 2;
-    const radius = Math.round(targetMeters / Math.max(cellSizeM, 1));
-    return Math.max(1, Math.min(16, radius));
   }
 
   // Filtro de suporte mínimo (denoise) pra máscaras esparsas — usado só
@@ -2238,7 +2144,17 @@ class KaraguaLeafletMap extends HTMLElement {
   // Constrói o(s) polígono(s) de uma classe (uma faixa do SOC, ou perda,
   // ou ganho) e adiciona ao layerGroup — usado por _refreshLossMap e
   // _refreshSoc. `bounds` é o retorno de `map.getBounds()`.
-  static _addClassPolygons(layerGroup, mask, cols, rows, bounds, paneName, fillRgb, strokeRgb) {
+  static _addClassPolygons(
+    layerGroup,
+    mask,
+    cols,
+    rows,
+    bounds,
+    paneName,
+    fillRgb,
+    strokeRgb,
+    style = {},
+  ) {
     const rings = KaraguaLeafletMap._maskToLatLngRings(
       mask,
       cols,
@@ -2257,6 +2173,7 @@ class KaraguaLeafletMap extends HTMLElement {
       fillOpacity: 0.45,
       opacity: 0.9,
       interactive: false,
+      ...style,
     }).addTo(layerGroup);
   }
 
@@ -2264,7 +2181,7 @@ class KaraguaLeafletMap extends HTMLElement {
   // janela qualquer em O(1) depois de um pré-cálculo O(n), então dá pra
   // fazer a "vizinhança" de cada célula sem reprocessar tudo por célula
   // (importante: roda a cada moveend/zoomend, grade de até 300×300). Raio
-  // em células, calculado por quem chama (ver _adaptiveSmoothRadius) —
+  // em células, calculado por quem chama —
   // essa função só faz a média, não decide o tamanho da vizinhança.
   // Compartilhada entre GMW (densidade de uma máscara 0/1), Perda/Ganho
   // (idem, dois canais) e SOC (média de um valor contínuo, t C/ha) — a
